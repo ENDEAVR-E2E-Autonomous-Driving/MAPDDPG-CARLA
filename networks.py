@@ -15,13 +15,13 @@ class Critic(nn.Module):
         # Convolution layers (no pooling)
         # conv2d(in_channels (3 for rgb), out_channels (number of filters), kernel_size (filter size), stride)
         self.conv1 = nn.Conv2d(in_channels=3, out_channels=32, kernel_size=5, stride=2)
-        self.conv2 = nn.Conv2d(in_channels=32, out_channels=32, kernel_size=3, stride=2)
+        self.conv2 = nn.Conv2d(in_channels=32, out_channels=32, kernel_size=3, stride=1)
         self.conv3 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, stride=2)
         self.conv4 = nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, stride=2)
         self.conv5 = nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, stride=2)
 
         # Fully connected layers
-        self.flatten_size = 128*13*18 # last 3 dimensions of pooling layer multiplied together (flattening)
+        self.flatten_size = 128*28*38 # last 3 dimensions of pooling layer multiplied together (flattening)
         self.fc1 = nn.Linear(self.flatten_size, 512)
         self.fc2 = nn.Linear(512, 416) # last FC layer is 416 to accomodate concatenation with other representations
 
@@ -63,7 +63,7 @@ class Critic(nn.Module):
         action_x = F.relu(self.a_fc2(action_x))
 
         # Concatenate features from FC layers with vehicle ego state and actor actions, and pass through final FC layers
-        x = torch.cat((x, vehicle_x, action_x))
+        x = torch.cat((x, vehicle_x, action_x), dim=1) # along feature dimension (dim=1 for batch data)
         x = F.relu(self.fc3(x))
         x = F.relu(self.fc4(x))
 
@@ -76,22 +76,34 @@ class Critic(nn.Module):
 """
 Actor Network with 
 """
+class Actor(nn.Module):
+    def __init__(self):
+        super(Actor, self).__init__()
 
-    
+        # Convolution layers (no pooling)
+        # conv2d(in_channels (3 for rgb), out_channels (number of filters), kernel_size (filter size), stride)
+        self.conv1 = nn.Conv2d(in_channels=3, out_channels=32, kernel_size=5, stride=2)
+        self.conv2 = nn.Conv2d(in_channels=32, out_channels=32, kernel_size=3, stride=1)
+        self.conv3 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, stride=2)
+        self.conv4 = nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, stride=2)
+        self.conv5 = nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, stride=2)
 
 if __name__ == '__main__':
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(device)
-    print()
-    testShapeNN = Critic(1).to(device)
+    device = torch.device("cuda" if torch.cuda.is_available() else torch.cpu())
+    # # print(device)
+    # # print()
+    # # testShapeNN = Critic(1).to(device)
 
-    img = cv2.imread('testImage.jpg')
-    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    transform = transforms.Compose([
-        transforms.ToTensor()
-    ])
-    tensor = transform(img).to(device)
-    print(tensor.shape)
-    output = testShapeNN.forward(tensor)
+    # img = cv2.imread('testImage.jpg')
+    # img = cv2.cvtColor(img, cv2.COLOR_BGR2RG
+    #     transforms.ToTensor()
+    # ])
+    # tensor = transform(img).to(device)
+    # print(tensor.shape)
+    # # output = testShapeNN.forward(tensor)
 
-    print(output.shape)
+    # # print(output.shape)
+
+    # print(device)
+    # test_shape = Actor().to(device)
+    # test_shape.forward(tensor)
