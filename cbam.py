@@ -26,6 +26,10 @@ class ChannelAttention(nn.Module):
         self.sigmoid = nn.Sigmoid()
     
     def forward(self, x):
+        # accounting for sequence length for temporal information with GRU
+        batch, seq_len, c, h, w = x.size()
+        x = x.view(batch * seq_len, c, h, w,)
+
         maxpooled = self.maxpool(x)
         avgpooled = self.avgpool(x)
 
@@ -43,6 +47,9 @@ class ChannelAttention(nn.Module):
 
         attention = self.sigmoid(out)
 
+        # reshape back to [batch, seq len, channels, height, width]
+        attention = attention.view(batch, seq_len, c, 1, 1)
+
         return attention
     
 
@@ -58,14 +65,22 @@ class SpatialAttention(nn.Module):
         self.sigmoid = nn.Sigmoid()
 
     def forward(self, x):
+        # accounting for sequence length dimension
+        batch, seq_len, c, h, w = x.size()
+        x = x.view(batch * seq_len, c, h, w,)
+
         # average and max pooling across channels
         avg_out = torch.mean(x, dim=1, keepdim=True)
         max_out, _ = torch.max(x, dim=1, keepdim=True)
         x = torch.cat([avg_out, max_out], dim=1)
 
         x = self.conv(x)
+        x = self.sigmoid(x)
 
-        return self.sigmoid(x)
+        # reshape back to [batch, seq len, channels, height, width]
+        attention = attention.view(batch, seq_len, 1, h, w)
+
+        return attention
     
 
 """
@@ -79,11 +94,19 @@ class CBAM(nn.Module):
         self.spatial_attention = SpatialAttention()
 
     def forward(self, f):
-        channel_attention = self.channel_attention.forward(f)
-        f_channel = channel_attention * f # element-wise multiplication
+        batch, seq_len, c, h, w = f.size()
 
-        spatial_attention = self.spatial_attention.forward(f_channel)
-        cbam_output = spatial_attention * f_channel
+        # process each frame in the sequence individually
+        cbam_outputs = []
+        for t in range(seq_len):
+            frame = f[:, t] # get the t-th frame in the sequence
+            channel_attention = self.channel_attention(frame)
+            f_channel = channel_attention * frame # element-wise multiplication
+            spatial_attention = self.spatial_attention(f_channel)
+            cbam_output = spatial_attention * f_channel
+            cbam_outputs.append(cbam_output)
+        
+        cbam_outputs = torch.stack(cbam_outputs, dim=1)
 
-        return cbam_output
+        return cbam_outputs
 

@@ -4,6 +4,7 @@ import torchvision.transforms as transforms
 import torch
 import numpy as np
 import cv2
+from cbam import CBAM
 
 """
 Critic Network
@@ -77,7 +78,7 @@ class Critic(nn.Module):
 Actor Network with 
 """
 class Actor(nn.Module):
-    def __init__(self):
+    def __init__(self, seq_len, num_gru_layers, hidden_size):
         super(Actor, self).__init__()
 
         # Convolution layers (no pooling)
@@ -87,6 +88,45 @@ class Actor(nn.Module):
         self.conv3 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, stride=2)
         self.conv4 = nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, stride=2)
         self.conv5 = nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, stride=2)
+
+        # Convolutional block attention mechanism
+        self.cbam = CBAM(in_channels=128)
+
+        # GRU layer
+        self.gru = nn.GRU(input_size=128*28*38, hidden_size=hidden_size, num_layers=num_gru_layers, batch_first=True)
+
+        # fully connected layers
+        self.fc1 = nn.Linear(in_features=hidden_size, out_features=512)
+        self.fc2 = nn.Linear(in_features=512, out_features=416)
+
+        # Sensor and vehicle state layers
+        self.v_fc1 = nn.Linear(in_features=29, out_features=128)
+        self.v_fc2 = nn.Linear(in_features=128, out_features=96)
+
+        # Combined fully connected layers
+        self.final_fc1 = nn.Linear(512, 512)
+        self.final_fc2 = nn.Linear(512, 512)
+        self.final_fc3 = nn.Linear(512, 3)
+
+    def forward(self, x):
+        batch_size, seq_len, c, h, w = x.size()
+
+        # process each frame individually
+        cbam_outputs = []
+        for t in range(seq_len):
+            frame = x[:, t] # get the t-th frame in the sequence
+            cbam_out = self.cbam(frame)
+            cbam_out = cbam_out.view(batch_size, -1) # flatten cbam output for GRU
+            cbam_outputs.append(cbam_out)
+        
+        # stack cbam outputs to create a sequence for the gru
+        gru_input = torch.stack(cbam_outputs, dim=1)
+        
+        # pass sequence through gru
+        gru_out, _ = self.gru(gru_input)
+        
+        #
+
 
 if __name__ == '__main__':
     device = torch.device("cuda" if torch.cuda.is_available() else torch.cpu())
