@@ -108,24 +108,49 @@ class Actor(nn.Module):
         self.final_fc2 = nn.Linear(512, 512)
         self.final_fc3 = nn.Linear(512, 3)
 
-    def forward(self, x):
-        batch_size, seq_len, c, h, w = x.size()
+    def forward(self, images, vehicle_state):
+        batch_size, seq_len, c, h, w = images.size()
 
         # process each frame individually
-        cbam_outputs = []
+        gru_input = torch.zeros(batch_size, seq_len, self.gru.input_size, device=images.device)
         for t in range(seq_len):
-            frame = x[:, t] # get the t-th frame in the sequence
-            cbam_out = self.cbam(frame)
+            frame = images[:, t] # get the t-th frame in the sequence
+
+            # forward pass through conv layers and cbam
+            x = F.relu(self.conv1(frame))
+            x = F.relu(self.conv2(x))
+            x = F.relu(self.conv3(x))
+            x = F.relu(self.conv4(x))
+            x = F.relu(self.conv5(x))
+
+            # apply CBAM to feature map
+            cbam_out = self.cbam(x)
             cbam_out = cbam_out.view(batch_size, -1) # flatten cbam output for GRU
-            cbam_outputs.append(cbam_out)
-        
-        # stack cbam outputs to create a sequence for the gru
-        gru_input = torch.stack(cbam_outputs, dim=1)
+            gru_input[:, t] = cbam_out
         
         # pass sequence through gru
         gru_out, _ = self.gru(gru_input)
         
-        #
+        # use only the output from the last GRU step for decision making
+        gru_out = gru_out[:, -1]
+
+        # forward pass through fc layers
+        x = F.relu(self.fc1(gru_out))
+        x = F.relu(self.fc2(x))
+
+        # process vehicle states
+        vehicle_x = F.relu(self.v_fc1(vehicle_state))
+        vehicle_x = F.relu(self.v_fc2(vehicle_x))
+
+        # concatenate vehicle state with learned features
+        x = torch.cat((x, vehicle_x), dim=1)
+
+        # final forward pass through fc layers
+        x = F.relu(self.final_fc1(x))
+        x = F.relu(self.final_fc2(x))
+        actions = self.final_fc3(x)
+
+        return actions
 
 
 if __name__ == '__main__':
