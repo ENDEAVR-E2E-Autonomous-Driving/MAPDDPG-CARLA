@@ -26,15 +26,15 @@ class env:
     STEER = 1.0 # steering amount: [-1,1]
     front_camera = None
 
-    def __init__(self):
+    def __init__(self, draw_waypoints=True):
         self.client = carla.Client('localhost', 2000)
         self.client.set_timeout(5.0)
         self.world = self.client.get_world()
         self.spectator = self.world.get_spectator()
         self.town_map = self.world.get_map()
 
-        self.generate_unique_waypoints()
-        self.current_waypoint = ... 
+        self.generate_unique_waypoints(draw_waypoints)
+        self.current_waypoint = 0 # updates later in reset method
 
         self.blueprint_library = self.world.get_blueprint_library()
         self.nissan_micra_bp = self.blueprint_library.find('vehicle.nissan.micra')[0]
@@ -101,28 +101,43 @@ class env:
         self.vehicle.apply_control(carla.VehicleControl(throttle=actions[0], steer=actions[1], brake=actions[2]))
         
         # compute reward
+        alpha, beta, eta = 0.33 # tune later based on where the agent needs improvement, they add up to 1 as of rn
+
         velocity = self.vehicle.get_velocity()
         kmh = int(3.6 * math.sqrt(velocity.x**2 + velocity.y**2 + velocity.z**2))
 
         done = False
-        r_collision = 0
-        if len(self.collision_history) != 0:
-            done = True
-            r_collision = -200
+        # r_collision = 0
+        # if len(self.collision_history) != 0:
+        #     done = True
+        #     r_collision = -200
         
         # restricting to 48.3 kmh = 30 mph
         r_speed = kmh if kmh <= 48.3 else 100-kmh
+        r_speed /= 48.3 # normalize to between [0,1]
         
         theta = self.get_car_and_lane_angle()
         speed_along_lane = velocity * math.cos(theta)
-        v_perpendicular_to_orbit = velocity * math.sin(theta)
+        v_perpendicular_to_lane = velocity * math.sin(theta)
+        deviation_from_lane = self.get_car_deviation_from_waypoint()
+
+        # want to encourage speed along lane (driving along center of a lane)
+        # want to discourage component of velocity perpendicular to lane (increases as car deviates)
+        # want to discourage deviation from lane
+        r_center = speed_along_lane - v_perpendicular_to_lane - deviation_from_lane - (velocity * deviation_from_lane)
+        r_center = (r_center - (-100)) / (100 - (-100)) # normalize, set max r_center to 100 and min to -100, can change later
 
         r_out = 0
-        distance_to_wp = self.get_car_deviation_from_waypoint()
-        if distance_to_wp > 2:
-            r_out = -50
-        
-        if self.episode_start + SECONDS_PER_EPISODE < time.time():
+        OUT_PENALTY = -50
+        if deviation_from_lane > 1.5:
+            r_out = OUT_PENALTY
+
+        # normalize r_out from [-50, 0] to [0, 1] (since the only values are 0 and -50)
+        r_out = (r_out - OUT_PENALTY) / -OUT_PENALTY  # OUT_PENALTY is negative
+
+        reward = alpha * r_speed + beta * r_center + eta * r_out
+
+        if self.episode_start + SECONDS_PER_EPISODE < time.time() or deviation_from_lane > 2.5 or len(self.collision_data) != 0:
             done = True
         
         # return obs, reward, done, info
@@ -131,7 +146,7 @@ class env:
     """
     Run only at beginning of training
     """
-    def generate_unique_waypoints(self):
+    def generate_unique_waypoints(self, draw_waypoints):
         print("Generating unique waypoints...")
 
         all_waypoints = self.town_map.generate_waypoints(0.3) # 0.3 meters between waypoints
@@ -156,12 +171,13 @@ class env:
                     self.unique_waypoints.append(wp)
         
         # draw all waypoints for 60 seconds
-        for wp in self.unique_waypoints:
-            self.world.debug.draw_string(wp.transform.location, '^', draw_shadow=False, color = carla.Color(r=0, g=0, b=255), life_time=60.0, persistent_lines=True)
+        if draw_waypoints:
+            for wp in self.unique_waypoints:
+                self.world.debug.draw_string(wp.transform.location, '^', draw_shadow=False, color = carla.Color(r=0, g=0, b=255), life_time=60.0, persistent_lines=True)
         
-        # move spectator to top down view
-        spectator_pos = carla.Transform(carla.Location(x=0, y=30, z=200), carla.Rotation(pitch=-90, yaw=-90))
-        self.spectator.set_transform(spectator_pos)
+            # move spectator to top down view
+            spectator_pos = carla.Transform(carla.Location(x=0, y=30, z=200), carla.Rotation(pitch=-90, yaw=-90))
+            self.spectator.set_transform(spectator_pos)
 
     
     def set_closest_waypoint(self):

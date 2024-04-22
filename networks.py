@@ -4,7 +4,122 @@ import torchvision.transforms as transforms
 import torch
 import numpy as np
 import cv2
-from cbam import CBAM
+
+"""
+Convolution Block Attention Mechanism
+"""
+# -------------------------------------
+"""
+Channel Attention
+"""
+class ChannelAttention(nn.Module):
+    def __init__(self, in_channels, reduction_ratio=16) -> None:
+        super(ChannelAttention, self).__init__()
+        # reduction_ratio reduces number of channels in the hidden layer of the MLP to decrease number of parameters
+        # apply max and average pooling to the spatial dimensions
+        self.maxpool = nn.AdaptiveMaxPool2d(1)
+        self.avgpool = nn.AdaptiveAvgPool2d(1)
+
+        # shared MLP (multi-layer perceptron)
+        self.shared_mlp = nn.Sequential(
+            nn.Linear(in_channels, in_channels // reduction_ratio, bias=False),
+            nn.ReLU(inplace=True),
+            nn.Linear(in_channels // reduction_ratio, in_channels, bias=False)
+        )
+
+        self.sigmoid = nn.Sigmoid()
+    
+    def forward(self, x):
+        # accounting for sequence length for temporal information with GRU
+        batch, seq_len, c, h, w = x.size()
+        x = x.view(batch * seq_len, c, h, w,)
+
+        maxpooled = self.maxpool(x)
+        avgpooled = self.avgpool(x)
+
+        # flatten before passing through MLP
+        maxpooled = maxpooled.view(x.size(0), -1)
+        avgpooled = avgpooled.view(x.size(0), -1)
+
+        # pass through MLP
+        max_out = self.shared_mlp(maxpooled)
+        avg_out = self.shared_mlp(avgpooled)
+
+        # Concatenate channel-wise features
+        out = max_out + avg_out
+        out = out.view(x.size(0), -1, 1, 1) # reshape back to the original size but with spatial dims 1x1
+
+        attention = self.sigmoid(out)
+
+        # reshape back to [batch, seq len, channels, height, width]
+        attention = attention.view(batch, seq_len, c, 1, 1)
+
+        return attention
+    
+
+"""
+Spatial Attention
+Consider modifying later
+"""
+class SpatialAttention(nn.Module):
+    def __init__(self, kernel_size=7) -> None:
+        super(SpatialAttention, self).__init__()
+
+        self.conv = nn.Conv2d(in_channels=2, out_channels=1, kernel_size=7, padding=kernel_size//2, bias=False)
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, x):
+        # accounting for sequence length dimension
+        batch, seq_len, c, h, w = x.size()
+        x = x.view(batch * seq_len, c, h, w,)
+
+        # average and max pooling across channels
+        avg_out = torch.mean(x, dim=1, keepdim=True)
+        max_out, _ = torch.max(x, dim=1, keepdim=True)
+        x = torch.cat([avg_out, max_out], dim=1)
+
+        x = self.conv(x)
+        x = self.sigmoid(x)
+
+        # reshape back to [batch, seq len, channels, height, width]
+        attention = attention.view(batch, seq_len, 1, h, w)
+
+        return attention
+    
+
+"""
+Convolutional Block Attention Mechanism
+"""
+class CBAM(nn.Module):
+    def __init__(self, in_channels) -> None:
+        super(CBAM, self).__init__()
+
+        self.channel_attention = ChannelAttention(in_channels)
+        self.spatial_attention = SpatialAttention()
+
+    def forward(self, f):
+        batch, seq_len, c, h, w = f.size()
+
+        # process each frame in the sequence individually
+        cbam_outputs = []
+        for t in range(seq_len):
+            frame = f[:, t] # get the t-th frame in the sequence
+            channel_attention = self.channel_attention(frame)
+            f_channel = channel_attention * frame # element-wise multiplication
+            spatial_attention = self.spatial_attention(f_channel)
+            cbam_output = spatial_attention * f_channel
+            cbam_outputs.append(cbam_output)
+        
+        cbam_outputs = torch.stack(cbam_outputs, dim=1)
+
+        return cbam_outputs
+    
+# ----------------------------------------------------------
+"""
+Actor-Critic Networks
+"""
+
+# ----------------------------------------------------------
 
 """
 Critic Network
@@ -75,7 +190,7 @@ class Critic(nn.Module):
 
 
 """
-Actor Network with 
+Actor Network with convolutional block attention mechanism and GRU layer
 """
 class Actor(nn.Module):
     def __init__(self, seq_len, num_gru_layers, hidden_size):
@@ -106,7 +221,7 @@ class Actor(nn.Module):
         # Combined fully connected layers
         self.final_fc1 = nn.Linear(512, 512)
         self.final_fc2 = nn.Linear(512, 512)
-        self.final_fc3 = nn.Linear(512, 3)
+        self.final_fc3 = nn.Linear(512, 3) # for 3 actions: throttle [0.0, 1.0], steer [-1.0, 1.0], brake [0.0, 1.0]
 
     def forward(self, images, vehicle_state):
         batch_size, seq_len, c, h, w = images.size()
@@ -148,14 +263,20 @@ class Actor(nn.Module):
         # final forward pass through fc layers
         x = F.relu(self.final_fc1(x))
         x = F.relu(self.final_fc2(x))
-        actions = self.final_fc3(x)
+        action_preds = self.final_fc3(x)
 
-        return actions
+        # use sigmoid for throttle and brake (range [0, 1]) and tanh for steer (range [-1, 1])
+        throttle = torch.sigmoid(action_preds[:, 0])
+        steer = torch.tanh(action_preds[:, 1])
+        brake = torch.sigmoid(action_preds[:, 2])
+
+        return throttle, steer, brake
 
 
 if __name__ == '__main__':
-    device = torch.device("cuda" if torch.cuda.is_available() else torch.cpu())
-    # # print(device)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(device)
+    print(torch.cuda.is_available())
     # # print()
     # # testShapeNN = Critic(1).to(device)
 
