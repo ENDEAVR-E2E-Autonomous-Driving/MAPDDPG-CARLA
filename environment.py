@@ -39,6 +39,28 @@ class env:
         self.blueprint_library = self.world.get_blueprint_library()
         self.nissan_micra_bp = self.blueprint_library.find('vehicle.nissan.micra')[0]
 
+    # setting up sensors for separate sensor state input
+    def setup_sensors(self):
+        # GPS sensor
+        gps_bp = self.world.get_blueprint_library().find('sensor.other.gnss')
+        self.gps_sensor = self.world.spawn_actor(gps_bp, carla.Transform(), attach_to=self.vehicle)
+        self.gps_sensor.listen(lambda data: self.process_gps_data(data))
+
+        # IMU sensor
+        imu_bp = self.world.get_blueprint_library().find('sensor.other.imu')
+        self.imu_sensor = self.world.spawn_actor(imu_bp, carla.Transform(), attach_to=self.vehicle)
+        self.imu_sensor.listen(lambda data: self.process_imu_data(data))
+
+    def process_gps_data(self, data):
+        self.gps_data = np.array([data.latitude, data.longitude, data.altitude])
+
+    def process_imu_data(self, data):
+        self.imu_data = np.array([
+            data.accelerometer.x, data.accelerometer.y, data.accelerometer.z,
+            data.gyroscope.x, data.gyroscope.y, data.gyroscope.z,
+            data.compass
+        ])
+
     def reset(self):
         self.collision_history = []
         self.actor_list = []
