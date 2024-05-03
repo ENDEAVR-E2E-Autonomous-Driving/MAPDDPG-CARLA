@@ -82,7 +82,7 @@ class SpatialAttention(nn.Module):
         x = self.sigmoid(x)
 
         # reshape back to [batch, seq len, channels, height, width]
-        attention = attention.view(batch, seq_len, 1, h, w)
+        attention = x.view(batch, seq_len, 1, h, w)
 
         return attention
     
@@ -193,7 +193,7 @@ class Critic(nn.Module):
 Actor Network with convolutional block attention mechanism and GRU layer
 """
 class Actor(nn.Module):
-    def __init__(self, seq_len, num_gru_layers, hidden_size):
+    def __init__(self, num_gru_layers=1, hidden_size=256):
         super(Actor, self).__init__()
 
         # Convolution layers (no pooling)
@@ -271,25 +271,3 @@ class Actor(nn.Module):
         brake = torch.sigmoid(action_preds[:, 2])
 
         return throttle, steer, brake
-
-
-if __name__ == '__main__':
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(device)
-    print(torch.cuda.is_available())
-    # # print()
-    # # testShapeNN = Critic(1).to(device)
-
-    # img = cv2.imread('testImage.jpg')
-    # img = cv2.cvtColor(img, cv2.COLOR_BGR2RG
-    #     transforms.ToTensor()
-    # ])
-    # tensor = transform(img).to(device)
-    # print(tensor.shape)
-    # # output = testShapeNN.forward(tensor)
-
-    # # print(output.shape)
-
-    # print(device)
-    # test_shape = Actor().to(device)
-    # test_shape.forward(tensor)

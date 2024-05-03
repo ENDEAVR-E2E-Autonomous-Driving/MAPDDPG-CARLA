@@ -21,7 +21,7 @@ import math
 DISPLAY_CAMERA_IMG = False
 SECONDS_PER_EPISODE = 10
 
-class env:
+class environment:
     DISPLAY_CAM = DISPLAY_CAMERA_IMG
     STEER = 1.0 # steering amount: [-1,1]
     front_camera = None
@@ -122,7 +122,7 @@ class env:
         # apply actions
         self.vehicle.apply_control(carla.VehicleControl(throttle=actions[0], steer=actions[1], brake=actions[2]))
         
-        # compute reward
+        "Compute Reward"
         alpha, beta, eta = 0.33 # tune later based on where the agent needs improvement, they add up to 1 as of rn
 
         velocity = self.vehicle.get_velocity()

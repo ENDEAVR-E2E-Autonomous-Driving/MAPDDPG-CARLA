@@ -2,10 +2,10 @@ import torch
 import torch.autograd
 import torch.optim as optim
 import torch.nn.functional as F
-from networks import *
 from torchrl.data import ListStorage, PrioritizedReplayBuffer
-from networks import Actor, Critic
-from ou_noise import OU_noise
+from mapddpg.networks import *
+from mapddpg.networks import Actor, Critic
+from mapddpg.ou_noise import OU_noise
 
 """
 Agent class that encapsulates functionalites of the agent, such as:
