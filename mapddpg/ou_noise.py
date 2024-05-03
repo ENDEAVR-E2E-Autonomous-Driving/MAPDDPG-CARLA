@@ -5,7 +5,7 @@ import copy
 """Ornstein-Uhlenbeck Noise (encourage exploration of actions)"""
 class OU_noise(object):
     """
-    size: size of noise vector to be generated
+    size: size of noise vector to be generated (equivalent to number of actions)
     mu: mean of the noise, 0 as default
     sigma: noise volatility, controls the magnitude of fluctuations
     """

@@ -70,41 +70,39 @@ class VehicleAgent:
 
     # learn from a previously sampled batch of experiences
     def learn(self, states, vehicle_state, actions, rewards, next_states, next_vehicle_state, dones):
-        # compute target actions using target actor network
-        target_actions = self.actor_target.forward(next_states, next_vehicle_state) 
-
-        # compute target Q values using the target critic network
-        target_Q_values = self.critic_target.forward(next_states, next_vehicle_state, target_actions)
-
-        # compute expected Q values
-        expected_Q_values = rewards + (self.gamma * target_Q_values * (1 - dones))
-
-        # compute current Q value using critic network
-        current_Q_values = self.critic(states, actions)
-
-        # compute critic loss and update critic network
-        critic_loss = F.mse_loss(current_Q_values, expected_Q_values)
         self.critic_optimizer.zero_grad()
+        self.actor_optimizer.zero_grad()
+
+        # compute target Q-values using the Bellman equation
+        with torch.no_grad():
+            target_actions = self.actor_target(next_states, next_vehicle_state)
+            target_Q_values = self.critic_target(next_states, next_vehicle_state, target_actions)
+            expected_Q_values = rewards + self.gamma * target_Q_values * (1 - dones)
+
+        # compute current Q-values from the critic network
+        current_Q_values = self.critic(states, vehicle_state, actions)
+
+        # critic Loss: mean Squared Error between current Q-values and expected Q-values
+        critic_loss = F.mse_loss(current_Q_values, expected_Q_values)
         critic_loss.backward()
         self.critic_optimizer.step()
 
-        # compute actor loss and update actor network
-        # actor loss is usually the negative mean of the current Q values produced by the critic for the current policy's actions
-        current_actions = self.actor.forward(states, vehicle_state)
-        actor_loss = -self.critic.forward(states, vehicle_state, current_actions).mean()
-        self.actor_optimizer.zero_grad()
+        # actor Loss: mean of Q-values output by the critic for current policy's actions
+        # negative sign because we want to maximize the critic's output (policy gradient ascent)
+        current_actions = self.actor(states, vehicle_state)
+        actor_loss = -self.critic(states, vehicle_state, current_actions).mean()
         actor_loss.backward()
         self.actor_optimizer.step()
 
         # soft-update the target networks
-        self.soft_update(self.actor, self.actor_target)
-        self.soft_update(self.critic, self.critic_target)
+        self.soft_update(self.actor, self.actor_target, self.tau)
+        self.soft_update(self.critic, self.critic_target, self.tau)
 
-    
-    # soft-update method for copying parameters of actor-critic to target actor-critic
-    def soft_update(self, source, target):
-        for target_param, param in zip(target.parameters(), source.parameters()):
-            target_param.data.copy_(target_param.data * (1.0 * self.tau) + param.data * self.tau)
+    # soft update for copying parameters of actor-critic to target networks
+    def soft_update(self, local_model, target_model, tau):
+        """ Soft update model parameters """
+        for target_param, local_param in zip(target_model.parameters(), local_model.parameters()):
+            target_param.data.copy_(tau*local_param.data + (1.0-tau)*target_param.data)
 
     
     # store experience in replay buffer

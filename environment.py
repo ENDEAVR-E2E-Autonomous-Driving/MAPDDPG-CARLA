@@ -37,10 +37,10 @@ class environment:
         self.current_waypoint = 0 # updates later in reset method
 
         self.blueprint_library = self.world.get_blueprint_library()
-        self.nissan_micra_bp = self.blueprint_library.find('vehicle.nissan.micra')[0]
+        self.bus_bp = self.blueprint_library.find('vehicle.mitsubishi.fusorosa')[0]
 
     # setting up sensors for separate sensor state input
-    def setup_sensors(self):
+    def setup_other_sensors(self):
         # GPS sensor
         gps_bp = self.world.get_blueprint_library().find('sensor.other.gnss')
         self.gps_sensor = self.world.spawn_actor(gps_bp, carla.Transform(), attach_to=self.vehicle)
@@ -66,7 +66,7 @@ class environment:
         self.actor_list = []
         # spawning the vehicle actor choosing a random spawn point from the map's list of recommended points
         self.spawn_point = random.choice(self.world.get_map().get_spawn_points())
-        self.vehicle = self.world.spawn_actor(self.nissan_micra_bp, self.spawn_point)
+        self.vehicle = self.world.spawn_actor(self.bus_bp, self.spawn_point)
         self.actor_list.append(self.vehicle)
         # Initializing camera blueprint
         self.camera_bp = self.blueprint_library.find('sensor.camera.rgb')
@@ -80,8 +80,8 @@ class environment:
         self.actor_list.append(self.rgb_camera)
         self.rgb_camera.listen(lambda data: self.process_img(data))
 
-        self.vehicle.apply_control(carla.VehicleControl(throttle=1.0, steer=0.0, brake=0.0))
-        time.sleep(5)
+        # self.vehicle.apply_control(carla.VehicleControl(throttle=1.0, steer=0.0, brake=0.0))
+        # time.sleep(5)
 
         collision_sensor = self.blueprint_library.find("sensor.other.collision")
         self.collision_sensor = self.world.spawn_actor(collision_sensor, relative_transform, attach_to=self.vehicle)
@@ -89,6 +89,9 @@ class environment:
 
         # get closest waypoint
         self.set_closest_waypoint()
+
+        # set up sensors
+        self.setup_other_sensors()
 
         # must return an observation, which is the image of the front facing camera
         while self.front_camera is None:
@@ -159,7 +162,7 @@ class environment:
 
         reward = alpha * r_speed + beta * r_center + eta * r_out
 
-        if self.episode_start + SECONDS_PER_EPISODE < time.time() or deviation_from_lane > 2.5 or len(self.collision_data) != 0:
+        if self.episode_start + SECONDS_PER_EPISODE < time.time() or deviation_from_lane > 2.5 or len(self.collision_data) > 0:
             done = True
         
         # return obs, reward, done, info
