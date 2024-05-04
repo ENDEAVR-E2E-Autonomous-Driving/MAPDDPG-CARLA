@@ -162,7 +162,7 @@ class environment:
 
         reward = alpha * r_speed + beta * r_center + eta * r_out
 
-        if self.episode_start + SECONDS_PER_EPISODE < time.time() or deviation_from_lane > 2.5 or len(self.collision_data) > 0:
+        if self.episode_start + SECONDS_PER_EPISODE < time.time() or deviation_from_lane > 3.5 or len(self.collision_data) > 0:
             done = True
         
         # return obs, reward, done, info

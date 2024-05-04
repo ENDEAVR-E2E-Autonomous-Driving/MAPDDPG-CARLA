@@ -68,6 +68,8 @@ class VehicleAgent:
         actions[1] = np.clip(actions[1], -1, 1) # steer
         actions[2] = np.clip(actions[2], 0, 1) # brake
 
+        return actions
+
     # learn from a previously sampled batch of experiences
     def learn(self, states, vehicle_state, actions, rewards, next_states, next_vehicle_state, dones):
         self.critic_optimizer.zero_grad()
@@ -104,6 +106,23 @@ class VehicleAgent:
         for target_param, local_param in zip(target_model.parameters(), local_model.parameters()):
             target_param.data.copy_(tau*local_param.data + (1.0-tau)*target_param.data)
 
+    # compute TD-error for storing experiences where the priority is the TD-error
+    def compute_td_error_and_Q_values(self, experience_tuple): 
+        """
+        computes TD-error, the current Q-values, and the expected Q-values
+        """
+        state_sequence, sensor_state, action, reward, next_state_sequence, next_vehicle_state, dones = experience_tuple        
+
+        with torch.no_grad():
+            next_actions = self.actor_target(next_state_sequence, next_vehicle_state)
+            next_Q_values = self.critic_target(next_state_sequence, next_vehicle_state, next_actions)
+            expected_Q_values = reward + self.gamma * next_Q_values * (1 - dones)
+
+        current_Q_values = self.critic(state_sequence, sensor_state, action)
+
+        td_error = current_Q_values - expected_Q_values
+
+        return td_error, current_Q_values, expected_Q_values
     
     # store experience in replay buffer
     def store_experience(self, experience_tuple, td_error):
@@ -131,13 +150,13 @@ class VehicleAgent:
     
     # sample a batch of experiences from the buffer
     def sample_experiences(self):
-        states, vehicle_state, actions, rewards, next_states, next_vehicle_state, dones, info = self.prioritized_replay_buffer.sample(self.batch_size, return_info=True)
+        experiences, info = self.prioritized_replay_buffer.sample(self.batch_size, return_info=True)
 
         # get weights and indices for the sampled experiences
         weights = torch.tensor(info['_weight'], dtype=torch.float32)
         indices = info['index']
 
-        return states, vehicle_state, actions, rewards, next_states, next_vehicle_state, dones, weights, indices
+        return experiences, weights, indices
     
 
     def save_models(self, filename):

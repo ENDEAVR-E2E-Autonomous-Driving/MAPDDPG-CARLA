@@ -75,11 +75,32 @@ if __name__=='__main__':
             action = agent.select_action(state_sequence=state_sequence, vehicle_ego_state=sensor_state) # using actor network
             next_state, reward, done, _ = environment.step(action)
 
-            # store transition in the replay buffer
-            agent.store_experience()
+            # update current sequence
+            current_sequence.append(next_state)
+            if len(current_sequence) > seq_len:
+                current_sequence.pop(0)
+
+            # get next vehicle sensor state
+            next_sensor_state = np.concatenate(env.gps_data, env.imu_data)
+
+            # store transition in the prioritized replay buffer, td-error is the priority
+            experience_tuple = (state_sequence, sensor_state, action, reward, np.stack(next_sensor_state, axis=0), next_sensor_state, done)
+            td_error, current_Q_vals, expected_Q_vals = agent.compute_td_error_and_Q_values(experience_tuple)
+            agent.store_experience(experience_tuple, td_error=td_error)
+
+            # learn if there are enough batches
+            if len(agent.prioritized_replay_buffer) > agent.batch_size:
+                experiences = agent.sample_experiences()
+                agent.learn(*experiences)
+
+            # move to next state
+            state = next_state
+            sensor_state = next_sensor_state
 
             total_reward += reward
             step += 1
+
+        print(f"Episode: {episode}, Total Reward: {total_reward}, Steps: {step}, Collision?: {len(env.collision_history) > 0}")
 
 
 
