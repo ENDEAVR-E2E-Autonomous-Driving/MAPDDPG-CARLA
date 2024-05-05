@@ -1,5 +1,4 @@
 import numpy as np
-import datetime
 import torch
 from environment import environment
 from agent import VehicleAgent
@@ -19,7 +18,6 @@ if __name__=='__main__':
     """
     # initialize the environment
     env = environment()
-    # state = env.reset()
 
     # initialize networks and agents
     actor = Actor(num_gru_layers=2)
@@ -69,7 +67,7 @@ if __name__=='__main__':
             state_sequence = np.stack(current_sequence, axis=0)
 
             # get vehicle sensor info as additional state inputs into actor
-            sensor_state = np.concatenate(env.gps_data, env.imu_data)
+            sensor_state = np.concatenate((env.gps_data, env.imu_data))
 
             # select and execute action
             action = agent.select_action(state_sequence=state_sequence, vehicle_ego_state=sensor_state) # using actor network
@@ -81,21 +79,21 @@ if __name__=='__main__':
                 current_sequence.pop(0)
 
             # get next vehicle sensor state
-            next_sensor_state = np.concatenate(env.gps_data, env.imu_data)
+            next_sensor_state = np.concatenate((env.gps_data, env.imu_data))
 
             # store transition in the prioritized replay buffer, td-error is the priority
-            experience_tuple = (state_sequence, sensor_state, action, reward, np.stack(next_sensor_state, axis=0), next_sensor_state, done)
+            experience_tuple = (state_sequence, sensor_state, action, reward, np.stack(current_sequence, axis=0), next_sensor_state, done)
             td_error, current_Q_vals, expected_Q_vals = agent.compute_td_error_and_Q_values(experience_tuple)
             agent.store_experience(experience_tuple, td_error=td_error)
 
             # learn if there are enough batches
             if len(agent.prioritized_replay_buffer) > agent.batch_size:
-                experiences = agent.sample_experiences()
-                agent.learn(*experiences)
+                states, sensor_states, actions, rewards, next_states, next_sensor_states, dones, weights, indices = agent.sample_experiences()
+                agent.learn(states, sensor_states, actions, rewards, next_states, next_sensor_states, dones, weights, indices)
 
             # move to next state
             state = next_state
-            sensor_state = next_sensor_state
+            # sensor_state = next_sensor_state
 
             total_reward += reward
             step += 1

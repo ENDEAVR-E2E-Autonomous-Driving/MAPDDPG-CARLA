@@ -168,7 +168,7 @@ class Critic(nn.Module):
         # Flatten and pass through fully connected layers
         x = x.reshape(x.size(0), -1) # flatten by keeping the batch dim and transforming features: channels*height*width
         x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2)
+        x = F.relu(self.fc2(x))
 
         # Pass vehicle state through their respective fc layers
         vehicle_x = F.relu(self.v_fc1(vehicle_ego_state))

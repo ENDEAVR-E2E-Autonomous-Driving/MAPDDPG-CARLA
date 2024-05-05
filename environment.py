@@ -144,6 +144,9 @@ class environment:
         theta = self.get_car_and_lane_angle()
         speed_along_lane = velocity * math.cos(theta)
         v_perpendicular_to_lane = velocity * math.sin(theta)
+
+        # at each step find the closest waypoint and compute deviation from it
+        self.set_closest_waypoint()
         deviation_from_lane = self.get_car_deviation_from_waypoint()
 
         # want to encourage speed along lane (driving along center of a lane)

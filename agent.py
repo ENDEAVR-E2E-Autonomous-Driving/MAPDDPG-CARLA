@@ -29,7 +29,8 @@ class VehicleAgent:
                  buffer_size=1000,
                  buffer_alpha=0.6,
                  buffer_eps=1e-4,
-                 buffer_beta=0.4) -> None:
+                 buffer_beta=0.4,
+                 ) -> None:
         
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -71,7 +72,7 @@ class VehicleAgent:
         return actions
 
     # learn from a previously sampled batch of experiences
-    def learn(self, states, vehicle_state, actions, rewards, next_states, next_vehicle_state, dones):
+    def learn(self, states, vehicle_state, actions, rewards, next_states, next_vehicle_state, dones, weights, indices):
         self.critic_optimizer.zero_grad()
         self.actor_optimizer.zero_grad()
 
@@ -85,9 +86,14 @@ class VehicleAgent:
         current_Q_values = self.critic(states, vehicle_state, actions)
 
         # critic Loss: mean Squared Error between current Q-values and expected Q-values
-        critic_loss = F.mse_loss(current_Q_values, expected_Q_values)
+        # multiply by importance sampling weights to offset bias from priority sampling
+        critic_loss = (weights * F.mse_loss(current_Q_values, expected_Q_values, reduction='none')).mean()
         critic_loss.backward()
         self.critic_optimizer.step()
+
+        # compute new priorities (absolute TD errors + a small epsilon)
+        new_priorities = (torch.abs(current_Q_values - expected_Q_values) + self.buffer_eps).detach().numpy()
+        self.update_priorities(indices, new_priorities)
 
         # actor Loss: mean of Q-values output by the critic for current policy's actions
         # negative sign because we want to maximize the critic's output (policy gradient ascent)
@@ -111,7 +117,7 @@ class VehicleAgent:
         """
         computes TD-error, the current Q-values, and the expected Q-values
         """
-        state_sequence, sensor_state, action, reward, next_state_sequence, next_vehicle_state, dones = experience_tuple        
+        state_sequence, sensor_state, action, reward, next_state_sequence, next_vehicle_state, dones = experience_tuple
 
         with torch.no_grad():
             next_actions = self.actor_target(next_state_sequence, next_vehicle_state)
@@ -120,22 +126,12 @@ class VehicleAgent:
 
         current_Q_values = self.critic(state_sequence, sensor_state, action)
 
-        td_error = current_Q_values - expected_Q_values
+        td_error = torch.abs(current_Q_values - expected_Q_values)
 
         return td_error, current_Q_values, expected_Q_values
     
     # store experience in replay buffer
     def store_experience(self, experience_tuple, td_error):
-        # # convert to tensors
-        # state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
-        # next_state = torch.FloatTensor(next_state).unsqueeze(0).to(self.device)
-        # action = torch.FloatTensor(action).unsqueeze(0).to(self.device)
-        # reward = torch.FloatTensor([reward]).unsqueeze(0).to(self.device)
-        # done = torch.FloatTensor([done]).unsqueeze(0).to(self.device)
-
-        # # compute current Q vals from critic
-        # current_Q_values = self.critic
-
         # convert priority to a scalar
         priority = (td_error.abs() + self.buffer_eps).pow(self.buffer_alpha).item()
 
@@ -152,11 +148,23 @@ class VehicleAgent:
     def sample_experiences(self):
         experiences, info = self.prioritized_replay_buffer.sample(self.batch_size, return_info=True)
 
-        # get weights and indices for the sampled experiences
+        # get importance weights and indices for the sampled experiences
         weights = torch.tensor(info['_weight'], dtype=torch.float32)
         indices = info['index']
 
-        return experiences, weights, indices
+        # unpack individual experience components
+        states, sensor_states, actions, rewards, next_states, next_sensor_states, dones = zip(*experiences)
+
+        # convert to tensors
+        states = torch.tensor(np.array(states), dtype=torch.float32, device=self.device)
+        sensor_state = torch.tensor(np.array(sensor_states), dtype=torch.float32, device=self.device)
+        actions = torch.tensor(np.array(actions), dtype=torch.float32, device=self.device)
+        rewards = torch.tensor(np.array(rewards), dtype=torch.float32, device=self.device)
+        next_states = torch.tensor(np.array(next_states), dtype=torch.float32, device=self.device)
+        next_sensor_state = torch.tensor(np.array(next_sensor_states), dtype=torch.float32, device=self.device)
+        dones = torch.tensor(np.array(dones), dtype=torch.float32, device=self.device)
+
+        return states, sensor_states, actions, rewards, next_states, next_sensor_states, dones, weights, indices
     
 
     def save_models(self, filename):
