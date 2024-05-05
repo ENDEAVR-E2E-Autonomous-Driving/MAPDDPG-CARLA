@@ -16,17 +16,25 @@ import time
 import numpy as np
 import cv2
 import math
+import pygame
 
 
 DISPLAY_CAMERA_IMG = False
-SECONDS_PER_EPISODE = 10
+SECONDS_PER_EPISODE = 200
 
 class environment:
     DISPLAY_CAM = DISPLAY_CAMERA_IMG
     STEER = 1.0 # steering amount: [-1,1]
     front_camera = None
 
-    def __init__(self, draw_waypoints=True):
+    def __init__(self, draw_waypoints=True, display_img=True):
+        # initialize pygame screen
+        pygame.init()
+        self.display_size = (640, 480)
+        self.screen = pygame.display.set_mode(self.display_size)
+        pygame.display.set_caption("RGB Camera View")
+
+        # intialize CARLA components
         self.client = carla.Client('localhost', 2000)
         self.client.set_timeout(5.0)
         self.world = self.client.get_world()
@@ -35,6 +43,9 @@ class environment:
 
         self.generate_unique_waypoints(draw_waypoints)
         self.current_waypoint = 0 # updates later in reset method
+
+        self.front_camera = None
+        self.DISPLAY_CAM = display_img
 
         self.blueprint_library = self.world.get_blueprint_library()
         self.bus_bp = self.blueprint_library.find('vehicle.mitsubishi.fusorosa')[0]
@@ -80,9 +91,6 @@ class environment:
         self.actor_list.append(self.rgb_camera)
         self.rgb_camera.listen(lambda data: self.process_img(data))
 
-        # self.vehicle.apply_control(carla.VehicleControl(throttle=1.0, steer=0.0, brake=0.0))
-        # time.sleep(5)
-
         collision_sensor = self.blueprint_library.find("sensor.other.collision")
         self.collision_sensor = self.world.spawn_actor(collision_sensor, relative_transform, attach_to=self.vehicle)
         self.collision_sensor.listen(lambda event: self.collision_data(event))
@@ -98,7 +106,6 @@ class environment:
             time.sleep(0.01)
 
         self.episode_start = time.time()
-        self.vehicle.apply_control(carla.VehicleControl(throttle=1.0, steer=0.0, brake=0.0))
 
         return self.front_camera
 
@@ -109,11 +116,13 @@ class environment:
     def process_img(self, image):
         img = np.array(image.raw_data)
         img_temp = img.reshape((480, 640, 4))
-        img_reshaped = img_temp[:, :, :3] # getting rgb values instead of rgba
+        img_reshaped = img_temp[:, :, :3] # getting rgb channels instead of rgba
 
         if self.DISPLAY_CAM:
-            cv2.imshow("", img_reshaped) # displaying camera input
-            cv2.waitKey(1)
+            # create pygame surface from the raw data
+            img_surface = pygame.surfarray.make_surface(np.transpose(img_reshaped, (1,0,2)))
+            self.screen.blit(img_surface, (0,0))
+            pygame.display.flip()
         
         self.front_camera = img_reshaped
 
@@ -165,11 +174,14 @@ class environment:
 
         reward = alpha * r_speed + beta * r_center + eta * r_out
 
-        if self.episode_start + SECONDS_PER_EPISODE < time.time() or deviation_from_lane > 3.5 or len(self.collision_data) > 0:
+        if time.time() - self.episode_start >= SECONDS_PER_EPISODE or deviation_from_lane > 3.5 or len(self.collision_data) > 0:
             done = True
         
+        # normalize image to [0,1]
+        normalized_camera = self.front_camera / 255.0
+
         # return obs, reward, done, info
-        return self.front_camera, reward, done, None
+        return normalized_camera, reward, done, None
     
     """
     Run only at beginning of training

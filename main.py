@@ -48,6 +48,7 @@ if __name__=='__main__':
 
     num_episodes = 1000
     seq_len = 5 # number of sequence frames to capture for actor GRU
+    max_steps = 500
 
     # stores current sequences
     current_sequence = []
@@ -72,6 +73,9 @@ if __name__=='__main__':
             # select and execute action
             action = agent.select_action(state_sequence=state_sequence, vehicle_ego_state=sensor_state) # using actor network
             next_state, reward, done, _ = environment.step(action)
+
+            if step > max_steps:
+                done = True
 
             # update current sequence
             current_sequence.append(next_state)
