@@ -18,12 +18,13 @@ if __name__=='__main__':
     """
     # initialize the environment
     env = environment()
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     # initialize networks and agents
-    actor = Actor(num_gru_layers=2)
-    critic = Critic()
-    actor_target = Actor(num_gru_layers=2)
-    critic_target = Critic()
+    actor = Actor(num_gru_layers=2).to(device)
+    critic = Critic().to(device)
+    actor_target = Actor(num_gru_layers=2).to(device)
+    critic_target = Critic().to(device)
 
     actor_optimizer = torch.optim.Adam(actor.parameters(), lr=1e-4)
     critic_optimizer = torch.optim.Adam(critic.parameters(), lr=1e-3)

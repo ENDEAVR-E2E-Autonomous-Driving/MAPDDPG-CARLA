@@ -35,10 +35,10 @@ class VehicleAgent:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # actor-critic components
-        self.actor = actor
-        self.critic = critic
-        self.actor_target = actor_target
-        self.critic_target = critic_target
+        self.actor = actor.to(self.device)
+        self.critic = critic.to(self.device)
+        self.actor_target = actor_target.to(self.device)
+        self.critic_target = critic_target.to(self.device)
         self.actor_optimizer = actor_optimizer
         self.critic_optimizer = critic_optimizer
         self.action_noise = action_noise
@@ -59,8 +59,15 @@ class VehicleAgent:
         self.actor.eval() # sets actor to evaluation mode 
 
         with torch.no_grad():
-            actions = self.actor.forward(state_sequence, vehicle_ego_state)
+            throttle, steer, brake = self.actor.forward(state_sequence, vehicle_ego_state)
         
+        if throttle > 0.1:
+            brake = 0.0
+        elif brake > 0.1:
+            throttle = 0.0
+        
+        actions = [throttle, steer, brake]
+
         self.actor.train() # sets actor to training mode
         actions += self.action_noise.sample() # add noise to actions to encourage exploration
 
