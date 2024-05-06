@@ -5,6 +5,7 @@ from agent import VehicleAgent
 from mapddpg.networks import Actor, Critic
 from mapddpg.ou_noise import OU_noise
 import argparse
+import json
 
 if __name__=='__main__':
     """
@@ -51,6 +52,14 @@ if __name__=='__main__':
     seq_len = 5 # number of sequence frames to capture for actor GRU
     max_steps = 500
 
+    # lists for plots
+    rewards_list = []
+    steps_list = []
+    collisions_list = []
+    lane_deviations_list = []
+    max_time_exceeded_list = []
+    episodes_list = range(num_episodes)
+
     # stores current sequences
     current_sequence = []
 
@@ -59,23 +68,31 @@ if __name__=='__main__':
         current_sequence = [state] * (seq_len - 1) # reset sequence for each new episode
         total_reward = 0
         done = False
-        step = 0
+        steps = 0
         num_collisions = 0
+        max_time_exceeded = False
+        lane_deviated = False
+        collision_occurred = False
 
         while not done:
             current_sequence.append(state)
 
             # form a sequence
-            state_sequence = np.stack(current_sequence, axis=0)
+            # state_sequence = np.stack(current_sequence, axis=0)
+            state_sequence = torch.tensor(np.stack(current_sequence, axis=0), dtype=torch.float32, device=device)
 
             # get vehicle sensor info as additional state inputs into actor
-            sensor_state = np.concatenate((env.gps_data, env.imu_data))
+            sensor_state = torch.tensor(np.concatenate((env.gps_data, env.imu_data)), dtype=torch.float32, device=device)
 
             # select and execute action
             action = agent.select_action(state_sequence=state_sequence, vehicle_ego_state=sensor_state) # using actor network
-            next_state, reward, done, _ = environment.step(action)
+            next_state, reward, done, info = environment.step(action)
+            
+            max_time_exceeded = info['max_time_exceeded']
+            lane_deviated = info['lane_deviated']
+            collision_occurred = info['collision_occurred']
 
-            if step > max_steps:
+            if steps > max_steps:
                 done = True
 
             # update current sequence
@@ -84,10 +101,12 @@ if __name__=='__main__':
                 current_sequence.pop(0)
 
             # get next vehicle sensor state
-            next_sensor_state = np.concatenate((env.gps_data, env.imu_data))
+            next_sensor_state = torch.tensor(np.concatenate((env.gps_data, env.imu_data)), dtype=torch.float32, device=device)
+
+            next_state_sequence = torch.tensor(np.stack(current_sequence, axis=0), dtype=torch.float32, device=device)
 
             # store transition in the prioritized replay buffer, td-error is the priority
-            experience_tuple = (state_sequence, sensor_state, action, reward, np.stack(current_sequence, axis=0), next_sensor_state, done)
+            experience_tuple = (state_sequence, sensor_state, action, reward, next_state_sequence, next_sensor_state, done)
             td_error, current_Q_vals, expected_Q_vals = agent.compute_td_error_and_Q_values(experience_tuple)
             agent.store_experience(experience_tuple, td_error=td_error)
 
@@ -101,9 +120,21 @@ if __name__=='__main__':
             # sensor_state = next_sensor_state
 
             total_reward += reward
-            step += 1
+            steps += 1
 
-        print(f"Episode: {episode}, Total Reward: {total_reward}, Steps: {step}, Collision?: {len(env.collision_history) > 0}")
+        # save model every 50 episodes
+        if episode % 50 == 0:
+            filename_prefix = f"{episode}_episodes"
+            agent.save_models(filename_prefix)
+
+        collision_occurred = len(env.collision_history) > 0
+
+        rewards_list.append(total_reward)
+        steps_list.append(steps)
+        collisions_list.append(collision_occurred)
+
+        print(f"Episode: {episode}, Total Reward: {total_reward}, Steps: {steps}, Collision?: {collision_occurred}")
 
 
-
+    with open('stats.json', 'w') as f:
+        json.dump({})

@@ -30,6 +30,7 @@ class VehicleAgent:
                  buffer_alpha=0.6,
                  buffer_eps=1e-4,
                  buffer_beta=0.4,
+                 target_update_freq=10
                  ) -> None:
         
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -53,6 +54,8 @@ class VehicleAgent:
         # other hyperparameters
         self.gamma = gamma # discount factor
         self.tau = tau # temperature
+        self.target_update_freq = target_update_freq
+        self.update_counter = 0
 
     # select an action with the actor network
     def select_action(self, state_sequence, vehicle_ego_state):
@@ -109,9 +112,10 @@ class VehicleAgent:
         actor_loss.backward()
         self.actor_optimizer.step()
 
-        # soft-update the target networks
-        self.soft_update(self.actor, self.actor_target, self.tau)
-        self.soft_update(self.critic, self.critic_target, self.tau)
+        # soft-update the target networks every 'target_update_freq' steps
+        if self.update_counter % self.target_update_freq == 0:
+            self.soft_update(self.actor, self.actor_target, self.tau)
+            self.soft_update(self.critic, self.critic_target, self.tau)
 
     # soft update for copying parameters of actor-critic to target networks
     def soft_update(self, local_model, target_model, tau):

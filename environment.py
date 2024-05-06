@@ -174,14 +174,27 @@ class environment:
 
         reward = alpha * r_speed + beta * r_center + eta * r_out
 
-        if time.time() - self.episode_start >= SECONDS_PER_EPISODE or deviation_from_lane > 3.5 or len(self.collision_data) > 0:
+        max_time_exceeded = False
+        lane_deviated = False
+        collision_occurred = False
+        
+        if time.time() - self.episode_start >= SECONDS_PER_EPISODE:
+            max_time_exceeded = True
             done = True
+
+        if deviation_from_lane > 3.5:
+            done = True
+            lane_deviated = True
+        
+        if len(self.collision_history) > 0:
+            done = True
+            collision_occurred = True
         
         # normalize image to [0,1]
         normalized_camera = self.front_camera / 255.0
 
         # return obs, reward, done, info
-        return normalized_camera, reward, done, None
+        return normalized_camera, reward, done, {'max_time_exceeded': max_time_exceeded, 'lane_deviated': lane_deviated, 'collision_occurred': collision_occurred}
     
     """
     Run only at beginning of training
