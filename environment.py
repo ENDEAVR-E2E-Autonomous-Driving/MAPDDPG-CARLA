@@ -48,7 +48,7 @@ class environment:
         self.DISPLAY_CAM = display_img
 
         self.blueprint_library = self.world.get_blueprint_library()
-        self.bus_bp = self.blueprint_library.find('vehicle.mitsubishi.fusorosa')[0]
+        self.bus_bp = self.blueprint_library.find('vehicle.mitsubishi.fusorosa')
 
     # setting up sensors for separate sensor state input
     def setup_other_sensors(self):
@@ -174,17 +174,11 @@ class environment:
 
         reward = alpha * r_speed + beta * r_center + eta * r_out
 
-        max_time_exceeded = False
-        lane_deviated = False
         collision_occurred = False
+        episode_length = time.time() - self.episode_start
         
-        if time.time() - self.episode_start >= SECONDS_PER_EPISODE:
-            max_time_exceeded = True
+        if episode_length >= SECONDS_PER_EPISODE or deviation_from_lane > 3.5:
             done = True
-
-        if deviation_from_lane > 3.5:
-            done = True
-            lane_deviated = True
         
         if len(self.collision_history) > 0:
             done = True
@@ -194,7 +188,7 @@ class environment:
         normalized_camera = self.front_camera / 255.0
 
         # return obs, reward, done, info
-        return normalized_camera, reward, done, {'max_time_exceeded': max_time_exceeded, 'lane_deviated': lane_deviated, 'collision_occurred': collision_occurred}
+        return normalized_camera, reward, done, {'episode_length': episode_length, 'lane_deviation': deviation_from_lane, 'collision_occurred': collision_occurred}
     
     """
     Run only at beginning of training
@@ -216,7 +210,7 @@ class environment:
                     # if waypoints are within 0.1 meters of x and y positions and within 20 degrees of yaw, they are the same
                     if abs(uwp.transform.location.x - wp.transform.location.x) < 0.1 \
                             and abs(uwp.transform.location.y - wp.transform.location.y) < 0.1 \
-                            and abs(uwp.transform.rotation.yaw - uwp.rotation.yaw) < 20:
+                            and abs(uwp.transform.rotation.yaw - wp.transform.rotation.yaw) < 20:
                         found = True
                         break
                 
@@ -226,19 +220,25 @@ class environment:
         # draw all waypoints for 60 seconds
         if draw_waypoints:
             for wp in self.unique_waypoints:
-                self.world.debug.draw_string(wp.transform.location, '^', draw_shadow=False, color = carla.Color(r=0, g=0, b=255), life_time=60.0, persistent_lines=True)
+                hover_location = carla.Location(
+                    x=wp.transform.location.x,
+                    y=wp.transform.location.y,
+                    z=wp.transform.location.z + 1 # add 1 meter of hover offset so that agent doesn't learn wp as part of env
+                )
+                self.world.debug.draw_string(hover_location, '^', draw_shadow=False, color = carla.Color(r=0, g=0, b=255), life_time=60.0, persistent_lines=True)
         
             # move spectator to top down view
             spectator_pos = carla.Transform(carla.Location(x=0, y=30, z=200), carla.Rotation(pitch=-90, yaw=-90))
             self.spectator.set_transform(spectator_pos)
 
+        print("Unique waypoints are generated and drawn.")
     
     def set_closest_waypoint(self):
         my_waypoint = self.vehicle.get_transform().location
         self.current_waypoint = min(self.unique_waypoints, key=lambda wp: my_waypoint.distance(wp.transform.location))
 
         # draw the waypoint
-        self.world.debug.draw_string(self.current_waypoint.transform.location, '^', draw_shadow=False, color=carla.Color(r=0, g=0, b=255), life_time=60.0, persistent_lines=True)
+        self.world.debug.draw_string(self.current_waypoint.transform.location, '^', draw_shadow=False, color=carla.Color(r=0, g=0, b=255), life_time=20.0, persistent_lines=True)
 
     def get_car_and_lane_angle(self):
         vehicle_transform = self.vehicle.get_transform()

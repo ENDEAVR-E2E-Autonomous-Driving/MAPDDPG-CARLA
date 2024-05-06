@@ -17,9 +17,14 @@ if __name__=='__main__':
     """
     MAPDDPG Training Loop
     """
+
+    print("Initializing variables...")
+
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    print(f"Training is processed on {device}")
+
     # initialize the environment
     env = environment()
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     # initialize networks and agents
     actor = Actor(num_gru_layers=2).to(device)
@@ -48,7 +53,7 @@ if __name__=='__main__':
         buffer_size=10000
     )
 
-    num_episodes = 1000
+    num_episodes = 500
     seq_len = 5 # number of sequence frames to capture for actor GRU
     max_steps = 500
 
@@ -57,21 +62,26 @@ if __name__=='__main__':
     steps_list = []
     collisions_list = []
     lane_deviations_list = []
-    max_time_exceeded_list = []
+    episode_lengths_list = []
     episodes_list = range(num_episodes)
 
     # stores current sequences
     current_sequence = []
 
+    print("All components are initialized.")
+    print("Starting training...")
     for episode in range(num_episodes):
         state = env.reset() # reset environment at start of each episode
         current_sequence = [state] * (seq_len - 1) # reset sequence for each new episode
-        total_reward = 0
+        action_noise.reset() # reset action noise to mean every episode for better learning
         done = False
+
+        # metrics
+        total_reward = 0
         steps = 0
         num_collisions = 0
-        max_time_exceeded = False
-        lane_deviated = False
+        episode_length_time = 0
+        total_lane_deviation = 0
         collision_occurred = False
 
         while not done:
@@ -88,8 +98,9 @@ if __name__=='__main__':
             action = agent.select_action(state_sequence=state_sequence, vehicle_ego_state=sensor_state) # using actor network
             next_state, reward, done, info = environment.step(action)
             
-            max_time_exceeded = info['max_time_exceeded']
-            lane_deviated = info['lane_deviated']
+            # collecting metrics
+            episode_length_time = info['episode_length']
+            total_lane_deviation += info['lane_deviation']
             collision_occurred = info['collision_occurred']
 
             if steps > max_steps:
@@ -132,9 +143,13 @@ if __name__=='__main__':
         rewards_list.append(total_reward)
         steps_list.append(steps)
         collisions_list.append(collision_occurred)
+        lane_deviations_list.append(total_lane_deviation)
+        episode_lengths_list.append(episode_length_time)
 
-        print(f"Episode: {episode}, Total Reward: {total_reward}, Steps: {steps}, Collision?: {collision_occurred}")
+        print("---------------------------------------------------------------------------------------------------")
+        print(f"Episode [{episode}]")
+        print(f"Total Reward: {total_reward}, Steps: {steps}, Collision?: {collision_occurred}, Episode Length: {episode_length_time}s, Total Lane Deviation: {total_lane_deviation}m")
 
 
     with open('stats.json', 'w') as f:
-        json.dump({})
+        json.dump({"rewards": rewards_list, "steps": steps, "collisions": collisions_list, "lane_deviations": lane_deviations_list, "episodes": episodes_list, "episodes_lengths": episode_lengths_list})

@@ -61,8 +61,10 @@ class VehicleAgent:
     def select_action(self, state_sequence, vehicle_ego_state):
         self.actor.eval() # sets actor to evaluation mode 
 
+        actor_state_sequence = state_sequence.permute(0, 3, 1, 2).unsqueeze(0)
+
         with torch.no_grad():
-            throttle, steer, brake = self.actor.forward(state_sequence, vehicle_ego_state)
+            throttle, steer, brake = self.actor.forward(actor_state_sequence, vehicle_ego_state)
         
         if throttle > 0.1:
             brake = 0.0
@@ -85,11 +87,14 @@ class VehicleAgent:
     def learn(self, states, vehicle_state, actions, rewards, next_states, next_vehicle_state, dones, weights, indices):
         self.critic_optimizer.zero_grad()
         self.actor_optimizer.zero_grad()
+        
+        actor_state_sequence = states.permute(0, 3, 1, 2).unsqueeze(0)
+        actor_next_state_sequence = next_states.permute(0, 3, 1, 2).unsqueeze(0)
 
         # compute target Q-values using the Bellman equation
         with torch.no_grad():
-            target_actions = self.actor_target(next_states, next_vehicle_state)
-            target_Q_values = self.critic_target(next_states, next_vehicle_state, target_actions)
+            target_actions = self.actor_target(actor_next_state_sequence, next_vehicle_state)
+            target_Q_values = self.critic_target(actor_next_state_sequence, next_vehicle_state, target_actions)
             expected_Q_values = rewards + self.gamma * target_Q_values * (1 - dones)
 
         # compute current Q-values from the critic network
@@ -107,12 +112,13 @@ class VehicleAgent:
 
         # actor Loss: mean of Q-values output by the critic for current policy's actions
         # negative sign because we want to maximize the critic's output (policy gradient ascent)
-        current_actions = self.actor(states, vehicle_state)
+        current_actions = self.actor(actor_state_sequence, vehicle_state)
         actor_loss = -self.critic(states, vehicle_state, current_actions).mean()
         actor_loss.backward()
         self.actor_optimizer.step()
 
         # soft-update the target networks every 'target_update_freq' steps
+        self.update_counter += 1
         if self.update_counter % self.target_update_freq == 0:
             self.soft_update(self.actor, self.actor_target, self.tau)
             self.soft_update(self.critic, self.critic_target, self.tau)

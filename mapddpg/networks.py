@@ -155,8 +155,6 @@ class Critic(nn.Module):
         self.q_value_stream = nn.Linear(512, 1) # returns expected total reward for current state-action pair
     
     def forward(self, state, vehicle_ego_state, actions):
-        state = state.float() / 255.0
-
         # Pass state image through conv and pooling layers
         # Shape of each layer output follows format: [batch_size, num channels, height, width]
         x = F.relu(self.conv1(state))
