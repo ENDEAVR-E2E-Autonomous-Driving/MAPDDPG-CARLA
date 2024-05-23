@@ -17,6 +17,7 @@ import numpy as np
 import cv2
 import math
 import pygame
+import json
 
 
 DISPLAY_CAMERA_IMG = False
@@ -27,28 +28,46 @@ class environment:
     STEER = 1.0 # steering amount: [-1,1]
     front_camera = None
 
-    def __init__(self, draw_waypoints=True, display_img=True):
+    def __init__(self, draw_waypoints=True, display_img=True, lookahead_steps=5):
         # initialize pygame screen
         pygame.init()
         self.display_size = (640, 480)
         self.screen = pygame.display.set_mode(self.display_size)
         pygame.display.set_caption("RGB Camera View")
 
+        self.image_saved = False
+
         # intialize CARLA components
         self.client = carla.Client('localhost', 2000)
-        self.client.set_timeout(5.0)
+        self.client.set_timeout(10.0)
         self.world = self.client.get_world()
         self.spectator = self.world.get_spectator()
         self.town_map = self.world.get_map()
 
         self.generate_unique_waypoints(draw_waypoints)
-        self.current_waypoint = 0 # updates later in reset method
+        self.current_waypoint = None # updates later in reset method
+        self.lookahead_steps = lookahead_steps # num steps to lookahead and collect waypoints
+        self.future_waypoint = None
+        self.stuck_steps = 0
+
 
         self.front_camera = None
         self.DISPLAY_CAM = display_img
 
         self.blueprint_library = self.world.get_blueprint_library()
         self.bus_bp = self.blueprint_library.find('vehicle.mitsubishi.fusorosa')
+
+    def destroy_all_actors(self):
+        """
+        Safely destroys all the actors spawned in the current episode.
+        """
+        for actor in self.actor_list:
+            if actor.is_alive:
+                actor.destroy()
+                print(f"{actor} destroyed", end=", ")
+                time.sleep(0.5)
+        self.actor_list.clear()
+        print()
 
     # setting up sensors for separate sensor state input
     def setup_other_sensors(self):
@@ -62,6 +81,9 @@ class environment:
         self.imu_sensor = self.world.spawn_actor(imu_bp, carla.Transform(), attach_to=self.vehicle)
         self.imu_sensor.listen(lambda data: self.process_imu_data(data))
 
+        self.actor_list.append(self.gps_sensor)
+        self.actor_list.append(self.imu_sensor)
+
     def process_gps_data(self, data):
         self.gps_data = np.array([data.latitude, data.longitude, data.altitude])
 
@@ -72,13 +94,32 @@ class environment:
             data.compass
         ])
 
+    def try_spawn_vehicle(self, attempts=10):
+        """
+        Try to spawn the vehicle at multiple spawn points to avoid collision.
+        """
+        for _ in range(attempts):
+            spawn_point = random.choice(self.world.get_map().get_spawn_points())
+            vehicle = self.world.try_spawn_actor(self.bus_bp, spawn_point)
+            if vehicle:
+                self.actor_list.append(vehicle)
+                print(f"Spawned vehicle at {spawn_point}.")
+                return vehicle
+            print("Spawn attempt failed, trying another location.")
+            time.sleep(0.1)  # Small delay before next attempt
+        return None
+
     def reset(self):
         self.collision_history = []
         self.actor_list = []
-        # spawning the vehicle actor choosing a random spawn point from the map's list of recommended points
-        self.spawn_point = random.choice(self.world.get_map().get_spawn_points())
-        self.vehicle = self.world.spawn_actor(self.bus_bp, self.spawn_point)
+
+        # attempting to spawn vehicle
+        self.vehicle = self.try_spawn_vehicle()
+        if not self.vehicle:
+            raise RuntimeError("Failed to spawn vehicle after multiple attempts.")
+
         self.actor_list.append(self.vehicle)
+
         # Initializing camera blueprint
         self.camera_bp = self.blueprint_library.find('sensor.camera.rgb')
         self.camera_bp.set_attribute('image_size_x', '640')
@@ -86,14 +127,17 @@ class environment:
         self.camera_bp.set_attribute('fov', '110') # field of viewself.rgb_cam = self.blueprint_library.find
 
         # spawning the rgb camera relative to the car, 2 meters forward and 1 meter above
-        relative_transform = carla.Transform(carla.Location(x=2.0, z=1.0))
+        relative_transform = carla.Transform(carla.Location(x=4, z=3.0))
         self.rgb_camera = self.world.spawn_actor(self.camera_bp, relative_transform, attach_to=self.vehicle)
         self.actor_list.append(self.rgb_camera)
         self.rgb_camera.listen(lambda data: self.process_img(data))
+        print("Camera spawned.")
 
         collision_sensor = self.blueprint_library.find("sensor.other.collision")
         self.collision_sensor = self.world.spawn_actor(collision_sensor, relative_transform, attach_to=self.vehicle)
+        self.actor_list.append(self.collision_sensor)
         self.collision_sensor.listen(lambda event: self.collision_data(event))
+        print("Collision sensor spawned.")
 
         # get closest waypoint
         self.set_closest_waypoint()
@@ -102,9 +146,11 @@ class environment:
         self.setup_other_sensors()
 
         # must return an observation, which is the image of the front facing camera
+        print("Waiting for image observation to load...")
         while self.front_camera is None:
             time.sleep(0.01)
 
+        print("Done. Training begins.")
         self.episode_start = time.time()
 
         return self.front_camera
@@ -118,127 +164,199 @@ class environment:
         img_temp = img.reshape((480, 640, 4))
         img_reshaped = img_temp[:, :, :3] # getting rgb channels instead of rgba
 
+        self.front_camera = img_reshaped
+
         if self.DISPLAY_CAM:
             # create pygame surface from the raw data
             img_surface = pygame.surfarray.make_surface(np.transpose(img_reshaped, (1,0,2)))
             self.screen.blit(img_surface, (0,0))
             pygame.display.flip()
-        
-        self.front_camera = img_reshaped
+
+         # Save the first image
+        if not self.image_saved:
+            cv2.imwrite('first_image.png', cv2.cvtColor(img_reshaped, cv2.COLOR_RGB2BGR))  # Convert RGB to BGR as OpenCV expects
+            self.image_saved = True
+            print("First image saved as 'first_image.png'.")
 
         # return img_reshaped/255.0 # normalize image data to 0-1 rather than 0-255 for input to neural networks 
 
-    # def reward(self, )
-
+    
     def step(self, actions):
         # apply actions
-        self.vehicle.apply_control(carla.VehicleControl(throttle=actions[0], steer=actions[1], brake=actions[2]))
-        
-        "Compute Reward"
-        alpha, beta, eta = 0.33 # tune later based on where the agent needs improvement, they add up to 1 as of rn
+        self.vehicle.apply_control(
+            carla.VehicleControl(
+                throttle=float(actions[0]), 
+                steer=float(actions[1]), 
+                brake=float(actions[2])
+            )
+        )
 
-        velocity = self.vehicle.get_velocity()
-        kmh = int(3.6 * math.sqrt(velocity.x**2 + velocity.y**2 + velocity.z**2))
-
-        done = False
-        # r_collision = 0
-        # if len(self.collision_history) != 0:
-        #     done = True
-        #     r_collision = -200
+        self.set_closest_waypoint()  # Update waypoints based on the vehicle's new position
         
-        # restricting to 48.3 kmh = 30 mph
-        r_speed = kmh if kmh <= 48.3 else 100-kmh
-        r_speed /= 48.3 # normalize to between [0,1]
-        
-        theta = self.get_car_and_lane_angle()
-        speed_along_lane = velocity * math.cos(theta)
-        v_perpendicular_to_lane = velocity * math.sin(theta)
+        # compute Reward
+        velocity_vector = self.vehicle.get_velocity()
+        speed = math.sqrt(velocity_vector.x**2 + velocity_vector.y**2 + velocity_vector.z**2)
+        # kmh = 3.6 * velocity
 
-        # at each step find the closest waypoint and compute deviation from it
-        self.set_closest_waypoint()
+        # get vehicle heading and waypoint heading in radians
+        vehicle_transform = self.vehicle.get_transform()
+        vehicle_yaw_rad = math.radians(vehicle_transform.rotation.yaw)
+        waypoint_yaw_rad = math.radians(self.current_waypoint.transform.rotation.yaw)
+
+        # calculate the angle between the vehicle's heading and the waypoint's direction
+        theta = vehicle_yaw_rad - waypoint_yaw_rad
+        theta = (theta + math.pi) % (2 * math.pi) - math.pi  # normalize angle to [-pi, pi]
+
+        speed_along_lane = speed * math.cos(theta)
+        speed_perpendicular_to_lane = speed * math.sin(theta)
         deviation_from_lane = self.get_car_deviation_from_waypoint()
 
-        # want to encourage speed along lane (driving along center of a lane)
-        # want to discourage component of velocity perpendicular to lane (increases as car deviates)
-        # want to discourage deviation from lane
-        r_center = speed_along_lane - v_perpendicular_to_lane - deviation_from_lane - (velocity * deviation_from_lane)
-        r_center = (r_center - (-100)) / (100 - (-100)) # normalize, set max r_center to 100 and min to -100, can change later
+        # reward calculations
+        alpha, beta, eta = 0.33, 0.33, 0.33  # adjust these weights as necessary
+        # restricting to 13.5 m/s = 30 mph
+        r_speed = speed if speed <= 13.5 else 27-speed
+        r_speed /= 13.5 # normalize to between [0,1]
+        r_center = speed_along_lane - abs(speed_perpendicular_to_lane) - deviation_from_lane - (speed_along_lane * deviation_from_lane)
+        r_out = 0 if deviation_from_lane < 2.0 else -50
 
-        r_out = 0
-        OUT_PENALTY = -50
-        if deviation_from_lane > 1.5:
-            r_out = OUT_PENALTY
-
-        # normalize r_out from [-50, 0] to [0, 1] (since the only values are 0 and -50)
-        r_out = (r_out - OUT_PENALTY) / -OUT_PENALTY  # OUT_PENALTY is negative
-
-        reward = alpha * r_speed + beta * r_center + eta * r_out
+        reward = alpha * r_speed + beta * r_center + eta * r_out 
 
         collision_occurred = False
+        angle_threshold = math.radians(30)  # 45 degrees threshold
+        angle_deviation = math.atan2(math.sin(vehicle_yaw_rad - waypoint_yaw_rad), 
+                                 math.cos(vehicle_yaw_rad - waypoint_yaw_rad))
         episode_length = time.time() - self.episode_start
-        
-        if episode_length >= SECONDS_PER_EPISODE or deviation_from_lane > 3.5:
+        stuck_threshold = 5  # number of consecutive low-speed steps to consider stuck
+
+        # Check for low velocity indicating possible stuck condition
+        if speed < 0.1:  # Threshold speed to determine if stuck
+            self.stuck_steps += 1
+        else:
+            self.stuck_steps = 0  # Reset if speed is above the threshold
+
+        done = False
+        if self.stuck_steps >= stuck_threshold:
+            print("Episode ended: Vehicle is stuck.")
             done = True
-        
+            self.stuck_steps = 0
+        if episode_length >= SECONDS_PER_EPISODE:
+            print("Episode ended: Maximum amount of time per episode reached.")
+            done = True
+        if angle_deviation > angle_threshold:
+            print(f"Episode ended: Vehicle deviated more than {angle_threshold} radians away from the center lane.")
+            done = True
+        if deviation_from_lane > 10:
+            print(f"Episode ended: Vehicle deviated more than {deviation_from_lane} meters away from the center lane.")
+            done = True
         if len(self.collision_history) > 0:
+            print(f"Episode ended: Vehicle encountered a collision")
             done = True
             collision_occurred = True
-        
+
+
         # normalize image to [0,1]
         normalized_camera = self.front_camera / 255.0
 
-        # return obs, reward, done, info
-        return normalized_camera, reward, done, {'episode_length': episode_length, 'lane_deviation': deviation_from_lane, 'collision_occurred': collision_occurred}
-    
+        # return observation, reward, done, info
+        return normalized_camera, reward, done, {
+            'episode_length': episode_length, 
+            'lane_deviation': deviation_from_lane, 
+            'collision_occurred': collision_occurred
+        }
+
+
     """
     Run only at beginning of training
     """
     def generate_unique_waypoints(self, draw_waypoints):
         print("Generating unique waypoints...")
-
-        all_waypoints = self.town_map.generate_waypoints(0.3) # 0.3 meters between waypoints
-
-        # find unique waypoints
+        spectator_pos = carla.Transform(carla.Location(x=0, y=30, z=200), carla.Rotation(pitch=-90, yaw=-90))
+        self.spectator.set_transform(spectator_pos)
+        all_waypoints = self.town_map.generate_waypoints(0.3)
         self.unique_waypoints = []
+        i = 1
+        num_wp = len(all_waypoints)
         for wp in all_waypoints:
-            if len(self.unique_waypoints) == 0:
+            print(f"{i}/{num_wp} waypoints")
+            if not self.unique_waypoints or not any(wp.transform.location.distance(uwp.transform.location) < 0.1 for uwp in self.unique_waypoints):
                 self.unique_waypoints.append(wp)
-            else:
-                # getting waypoints that are not located at the same position
-                found = False
-                for uwp in self.unique_waypoints:
-                    # if waypoints are within 0.1 meters of x and y positions and within 20 degrees of yaw, they are the same
-                    if abs(uwp.transform.location.x - wp.transform.location.x) < 0.1 \
-                            and abs(uwp.transform.location.y - wp.transform.location.y) < 0.1 \
-                            and abs(uwp.transform.rotation.yaw - wp.transform.rotation.yaw) < 20:
-                        found = True
-                        break
-                
-                if not found:
-                    self.unique_waypoints.append(wp)
-        
-        # draw all waypoints for 60 seconds
-        if draw_waypoints:
-            for wp in self.unique_waypoints:
-                hover_location = carla.Location(
-                    x=wp.transform.location.x,
-                    y=wp.transform.location.y,
-                    z=wp.transform.location.z + 1 # add 1 meter of hover offset so that agent doesn't learn wp as part of env
-                )
-                self.world.debug.draw_string(hover_location, '^', draw_shadow=False, color = carla.Color(r=0, g=0, b=255), life_time=60.0, persistent_lines=True)
-        
-            # move spectator to top down view
-            spectator_pos = carla.Transform(carla.Location(x=0, y=30, z=200), carla.Rotation(pitch=-90, yaw=-90))
-            self.spectator.set_transform(spectator_pos)
+                if draw_waypoints:
+                    self.world.debug.draw_string(wp.transform.location + carla.Location(z=1), 'O', color=carla.Color(r=255, g=0, b=0), life_time=120.0)
+
+            i += 1
 
         print("Unique waypoints are generated and drawn.")
-    
-    def set_closest_waypoint(self):
-        my_waypoint = self.vehicle.get_transform().location
-        self.current_waypoint = min(self.unique_waypoints, key=lambda wp: my_waypoint.distance(wp.transform.location))
+    # def generate_unique_waypoints(self, draw_waypoints):
+    #     print("Generating unique waypoints...")
 
-        # draw the waypoint
-        self.world.debug.draw_string(self.current_waypoint.transform.location, '^', draw_shadow=False, color=carla.Color(r=0, g=0, b=255), life_time=20.0, persistent_lines=True)
+    #     all_waypoints = self.town_map.generate_waypoints(0.3) # 0.3 meters between waypoints
+
+    #     # find unique waypoints
+    #     self.unique_waypoints = []
+    #     for wp in all_waypoints:
+    #         if len(self.unique_waypoints) == 0:
+    #             self.unique_waypoints.append(wp)
+    #         else:
+    #             # getting waypoints that are not located at the same position
+    #             found = False
+    #             for uwp in self.unique_waypoints:
+    #                 # if waypoints are within 0.1 meters of x and y positions and within 20 degrees of yaw, they are the same
+    #                 if abs(uwp.transform.location.x - wp.transform.location.x) < 0.1 \
+    #                         and abs(uwp.transform.location.y - wp.transform.location.y) < 0.1 \
+    #                         and abs(uwp.transform.rotation.yaw - wp.transform.rotation.yaw) < 20:
+    #                     found = True
+    #                     break
+                
+    #             if not found:
+    #                 self.unique_waypoints.append(wp)
+        
+    #     # draw all waypoints for 60 seconds
+    #     if draw_waypoints:
+    #         for wp in self.unique_waypoints:
+    #             hover_location = carla.Location(
+    #                 x=wp.transform.location.x,
+    #                 y=wp.transform.location.y,
+    #                 z=wp.transform.location.z + 5 # add 5 meters of hover offset so that agent doesn't learn wp as part of env
+    #             )
+    #             self.world.debug.draw_string(hover_location, '^', draw_shadow=False, color = carla.Color(r=0, g=0, b=255), life_time=60.0, persistent_lines=True)
+        
+    #         # move spectator to top down view
+    #         spectator_pos = carla.Transform(carla.Location(x=0, y=30, z=200), carla.Rotation(pitch=-90, yaw=-90))
+    #         self.spectator.set_transform(spectator_pos)
+
+    #     # with open('unique_waypoints.json', 'w') as f:
+    #     #     json.dump({'unique_waypoints': self.unique_waypoints}, f)
+        
+
+    #     print("Unique waypoints are generated and drawn.")
+    
+    """Run only at the beginning of each episode"""
+    def set_closest_waypoint(self):
+        current_location = self.vehicle.get_transform().location
+        # Calculate distances to all waypoints
+        distances = [current_location.distance(wp.transform.location) for wp in self.unique_waypoints]
+        # Find the closest waypoint
+        min_distance_index = np.argmin(distances)
+        self.current_waypoint = self.unique_waypoints[min_distance_index]
+
+        # Lookahead mechanism
+        lookahead_index = min(min_distance_index + self.lookahead_steps, len(self.unique_waypoints) - 1)
+        self.future_waypoint = self.unique_waypoints[lookahead_index]
+
+        # Draw the current and future waypoints
+        self.world.debug.draw_string(self.current_waypoint.transform.location + carla.Location(z=1), 'X', color=carla.Color(r=0, g=255, b=0), life_time=10.0)
+        self.world.debug.draw_string(self.future_waypoint.transform.location + carla.Location(z=1), 'X', color=carla.Color(r=0, g=0, b=255), life_time=10.0)
+    # def set_closest_waypoint(self):
+    #     my_waypoint = self.vehicle.get_transform().location
+    #     self.current_waypoint = min(self.unique_waypoints, key=lambda wp: my_waypoint.distance(wp.transform.location))
+
+    #     # draw the waypoint
+    #     hover_location = carla.Location(
+    #         x=self.current_waypoint.transform.location.x,
+    #         y=self.current_waypoint.transform.location.y,
+    #         z=self.current_waypoint.transform.location.z + 5 # add 5 meters of hover offset so that agent doesn't learn wp as part of env
+    #     )
+    #     self.world.debug.draw_string(hover_location, '^', draw_shadow=False, color=carla.Color(r=0, g=0, b=255), life_time=10.0, persistent_lines=True)
 
     def get_car_and_lane_angle(self):
         vehicle_transform = self.vehicle.get_transform()

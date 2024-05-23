@@ -31,8 +31,8 @@ class ChannelAttention(nn.Module):
     
     def forward(self, x):
         # accounting for sequence length for temporal information with GRU
-        batch, seq_len, c, h, w = x.size()
-        x = x.view(batch * seq_len, c, h, w,)
+        batch, c, h, w = x.size()
+        # x = x.view(batch * seq_len, c, h, w,)
 
         maxpooled = self.maxpool(x)
         avgpooled = self.avgpool(x)
@@ -52,7 +52,9 @@ class ChannelAttention(nn.Module):
         attention = self.sigmoid(out)
 
         # reshape back to [batch, seq len, channels, height, width]
-        attention = attention.view(batch, seq_len, c, 1, 1)
+        # attention = attention.view(batch, seq_len, c, 1, 1)
+        attention = attention.view(batch, c, 1, 1)
+
 
         return attention
     
@@ -70,8 +72,8 @@ class SpatialAttention(nn.Module):
 
     def forward(self, x):
         # accounting for sequence length dimension
-        batch, seq_len, c, h, w = x.size()
-        x = x.view(batch * seq_len, c, h, w,)
+        batch, c, h, w = x.size()
+        # x = x.view(batch * seq_len, c, h, w,)
 
         # average and max pooling across channels
         avg_out = torch.mean(x, dim=1, keepdim=True)
@@ -82,7 +84,9 @@ class SpatialAttention(nn.Module):
         x = self.sigmoid(x)
 
         # reshape back to [batch, seq len, channels, height, width]
-        attention = x.view(batch, seq_len, 1, h, w)
+        # attention = x.view(batch, seq_len, 1, h, w)
+        attention = x.view(batch, 1, h, w)
+
 
         return attention
     
@@ -142,7 +146,7 @@ class Critic(nn.Module):
         self.fc2 = nn.Linear(512, 416) # last FC layer is 416 to accomodate concatenation with other representations
 
         # Fully connected layers for vehicle ego state
-        self.v_fc1 = nn.Linear(29, 128)
+        self.v_fc1 = nn.Linear(10, 128)
         self.v_fc2 = nn.Linear(128, 64)
 
         # Fully connected layers for actions
@@ -167,6 +171,13 @@ class Critic(nn.Module):
         x = x.reshape(x.size(0), -1) # flatten by keeping the batch dim and transforming features: channels*height*width
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
+
+        # ensure vehicle state is 2D (add a batch dimension if needed)
+        if len(vehicle_ego_state.size()) == 1:
+            vehicle_ego_state = vehicle_ego_state.unsqueeze(0)
+
+        if len(actions.size()) == 1:
+            actions = actions.unsqueeze(0)
 
         # Pass vehicle state through their respective fc layers
         vehicle_x = F.relu(self.v_fc1(vehicle_ego_state))
@@ -194,76 +205,77 @@ class Actor(nn.Module):
     def __init__(self, num_gru_layers=1, hidden_size=256):
         super(Actor, self).__init__()
 
-        # Convolution layers (no pooling)
-        # conv2d(in_channels (3 for rgb), out_channels (number of filters), kernel_size (filter size), stride)
-        self.conv1 = nn.Conv2d(in_channels=3, out_channels=32, kernel_size=5, stride=2)
-        self.conv2 = nn.Conv2d(in_channels=32, out_channels=32, kernel_size=3, stride=1)
-        self.conv3 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, stride=2)
-        self.conv4 = nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, stride=2)
-        self.conv5 = nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, stride=2)
+        # convolution layers
+        self.conv1 = nn.Conv2d(3, 32, kernel_size=5, stride=2)
+        self.conv2 = nn.Conv2d(32, 32, kernel_size=3, stride=1)
+        self.conv3 = nn.Conv2d(32, 64, kernel_size=3, stride=2)
+        self.conv4 = nn.Conv2d(64, 128, kernel_size=3, stride=2)
+        self.conv5 = nn.Conv2d(128, 128, kernel_size=3, stride=2)
 
-        # Convolutional block attention mechanism
+        # convolutional block attention mechanism
         self.cbam = CBAM(in_channels=128)
 
         # GRU layer
-        self.gru = nn.GRU(input_size=128*28*38, hidden_size=hidden_size, num_layers=num_gru_layers, batch_first=True)
+        self.gru = nn.GRU(input_size=128 * 28 * 38, hidden_size=hidden_size, num_layers=num_gru_layers, batch_first=True)
 
         # fully connected layers
-        self.fc1 = nn.Linear(in_features=hidden_size, out_features=512)
-        self.fc2 = nn.Linear(in_features=512, out_features=416)
+        self.fc1 = nn.Linear(hidden_size, 512)
+        self.fc2 = nn.Linear(512, 416)
 
-        # Sensor and vehicle state layers
-        self.v_fc1 = nn.Linear(in_features=29, out_features=128)
-        self.v_fc2 = nn.Linear(in_features=128, out_features=96)
+        # sensor and vehicle state layers
+        self.v_fc1 = nn.Linear(10, 128)
+        self.v_fc2 = nn.Linear(128, 96)
 
-        # Combined fully connected layers
+        # combined fully connected layers
         self.final_fc1 = nn.Linear(512, 512)
         self.final_fc2 = nn.Linear(512, 512)
-        self.final_fc3 = nn.Linear(512, 3) # for 3 actions: throttle [0.0, 1.0], steer [-1.0, 1.0], brake [0.0, 1.0]
+        self.final_fc3 = nn.Linear(512, 3)  # throttle, steer, brake
 
     def forward(self, images, vehicle_state):
         batch_size, seq_len, c, h, w = images.size()
 
-        # process each frame individually
-        gru_input = torch.zeros(batch_size, seq_len, self.gru.input_size, device=images.device)
-        for t in range(seq_len):
-            frame = images[:, t] # get the t-th frame in the sequence
+        # flatten the image sequence into one batch dimension
+        images = images.view(batch_size * seq_len, c, h, w)
 
-            # forward pass through conv layers and cbam
-            x = F.relu(self.conv1(frame))
-            x = F.relu(self.conv2(x))
-            x = F.relu(self.conv3(x))
-            x = F.relu(self.conv4(x))
-            x = F.relu(self.conv5(x))
+        # pass through convolution layers
+        x = F.relu(self.conv1(images))
+        x = F.relu(self.conv2(x))
+        x = F.relu(self.conv3(x))
+        x = F.relu(self.conv4(x))
+        x = F.relu(self.conv5(x))
 
-            # apply CBAM to feature map
-            cbam_out = self.cbam(x)
-            cbam_out = cbam_out.view(batch_size, -1) # flatten cbam output for GRU
-            gru_input[:, t] = cbam_out
-        
-        # pass sequence through gru
-        gru_out, _ = self.gru(gru_input)
-        
-        # use only the output from the last GRU step for decision making
+        # apply CBAM
+        x = x.view(batch_size, seq_len, 128, 28, 38)
+        x = self.cbam(x)
+
+        # reshape for GRU: (batch_size, seq_len, input_size)
+        x = x.reshape(batch_size, seq_len, 128*28*38)
+
+        # pass through GRU
+        gru_out, _ = self.gru(x)
+
+        # use only the output from the last GRU step
         gru_out = gru_out[:, -1]
 
-        # forward pass through fc layers
+        # pass through fully connected layers
         x = F.relu(self.fc1(gru_out))
         x = F.relu(self.fc2(x))
+
+        # ensure vehicle state is 2D (add a batch dimension if needed)
+        if len(vehicle_state.size()) == 1:
+            vehicle_state = vehicle_state.unsqueeze(0)
 
         # process vehicle states
         vehicle_x = F.relu(self.v_fc1(vehicle_state))
         vehicle_x = F.relu(self.v_fc2(vehicle_x))
 
-        # concatenate vehicle state with learned features
+        # concatenate with learned features and final pass through FC layers
         x = torch.cat((x, vehicle_x), dim=1)
-
-        # final forward pass through fc layers
         x = F.relu(self.final_fc1(x))
         x = F.relu(self.final_fc2(x))
         action_preds = self.final_fc3(x)
 
-        # use sigmoid for throttle and brake (range [0, 1]) and tanh for steer (range [-1, 1])
+        # map predictions to action ranges
         throttle = torch.sigmoid(action_preds[:, 0])
         steer = torch.tanh(action_preds[:, 1])
         brake = torch.sigmoid(action_preds[:, 2])
