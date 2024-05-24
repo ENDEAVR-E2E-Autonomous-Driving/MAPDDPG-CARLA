@@ -54,7 +54,7 @@ if __name__=='__main__':
         device=device,
         gamma=0.99,
         tau=0.001,
-        batch_size=16,
+        batch_size=8,
         buffer_size=10000
     )
 
