@@ -150,10 +150,9 @@ if __name__=='__main__':
 
                     states, sensor_states, actions, rewards, next_states, next_sensor_states, dones, weights, indices = agent.sample_experiences()
                     agent.learn(
-                        states.to(device), sensor_states.to(device), 
-                        actions.to(device), rewards.to(device), 
-                        next_states.to(device), next_sensor_states.to(device), 
-                        dones.to(device), weights.to(device), indices.to(device)
+                        states, sensor_states, actions, rewards, 
+                        next_states, next_sensor_states, 
+                        dones, weights, indices
                     )
 
                 # move to next state
@@ -175,6 +174,8 @@ if __name__=='__main__':
 
         
             print(f"Total Reward: {total_reward}, Steps: {steps}, Collision?: {collision_occurred}, Episode Length: {episode_length_time}s, Total Lane Deviation: {total_lane_deviation}m")
+            print("CUDA Memory Usage Summary:")
+            print(torch.cuda.memory_summary())
             print("---------------------------------------------------------------------------------------------------")
 
             # if episode % 5 == 0:
