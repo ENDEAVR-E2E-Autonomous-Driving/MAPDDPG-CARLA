@@ -177,11 +177,11 @@ if __name__=='__main__':
             print(f"Total Reward: {total_reward}, Steps: {steps}, Collision?: {collision_occurred}, Episode Length: {episode_length_time}s, Total Lane Deviation: {total_lane_deviation}m")
             print("---------------------------------------------------------------------------------------------------")
 
-            if episode % 5 == 0:
-                # Clear CUDA cache to free unused memory
-                if device == 'cuda':
-                    torch.cuda.empty_cache()
-                    print(f"CUDA cache cleared at episode {episode}.")
+            # if episode % 5 == 0:
+            # Clear CUDA cache to free unused memory every episode
+            if device == 'cuda':
+                torch.cuda.empty_cache()
+                print(f"CUDA cache cleared at episode {episode}.")
 
             # save model every 20 episodes
             if episode % 20 == 0:
