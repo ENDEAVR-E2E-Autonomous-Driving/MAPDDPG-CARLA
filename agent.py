@@ -150,7 +150,8 @@ class VehicleAgent:
 
         # actor Loss: mean of Q-values output by the critic for current policy's actions
         # negative sign because we want to maximize the critic's output (policy gradient ascent)
-        throttle, steer, brake = self.actor(next_states, next_vehicle_state)
+        with torch.no_grad():
+            throttle, steer, brake = self.actor(next_states, next_vehicle_state)
         current_actions = torch.cat((throttle.unsqueeze(1), steer.unsqueeze(1), brake.unsqueeze(1)), dim=1).to(self.device)
         # current_actions = torch.tensor(current_actions, dtype=torch.float32, device=self.device)
         actor_loss = -self.critic(critic_states, vehicle_state, current_actions).mean()
@@ -186,8 +187,7 @@ class VehicleAgent:
             next_actions = torch.tensor(next_actions, dtype=torch.float32, device=self.device)
             next_Q_values = self.critic_target(critic_next_state, next_vehicle_state, next_actions)
             expected_Q_values = reward + self.gamma * next_Q_values * (1 - dones)
-
-        current_Q_values = self.critic(critic_state, sensor_state, action)
+            current_Q_values = self.critic(critic_state, sensor_state, action)
 
         td_error = torch.abs(current_Q_values - expected_Q_values)
 
