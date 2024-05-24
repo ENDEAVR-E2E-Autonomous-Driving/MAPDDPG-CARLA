@@ -30,10 +30,10 @@ class environment:
 
     def __init__(self, draw_waypoints=True, display_img=True, lookahead_steps=5):
         # initialize pygame screen
-        pygame.init()
-        self.display_size = (640, 480)
-        self.screen = pygame.display.set_mode(self.display_size)
-        pygame.display.set_caption("RGB Camera View")
+        # pygame.init()
+        # self.display_size = (640, 480)
+        # self.screen = pygame.display.set_mode(self.display_size)
+        # pygame.display.set_caption("RGB Camera View")
 
         self.image_saved = False
 
