@@ -165,7 +165,7 @@ class environment:
         img_reshaped = img_temp[:, :, :3] # getting rgb channels instead of rgba
 
         # resize image for less computation
-        resized_img = cv2.resize(img_reshaped, (320, 160), interpolation=cv2.INTER_AREA)
+        resized_img = cv2.resize(img_reshaped, (200, 88), interpolation=cv2.INTER_AREA)
 
         # self.front_camera = img_reshaped
         self.front_camera = resized_img
