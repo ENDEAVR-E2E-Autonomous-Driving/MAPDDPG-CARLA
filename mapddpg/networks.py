@@ -244,8 +244,6 @@ class Actor(nn.Module):
         x = F.relu(self.conv4(x))
         x = F.relu(self.conv5(x))
 
-        print(x.size())
-
         # apply CBAM
         x = x.view(batch_size, seq_len, 128, 8, 18)
         x = self.cbam(x)
