@@ -164,7 +164,11 @@ class environment:
         img_temp = img.reshape((480, 640, 4))
         img_reshaped = img_temp[:, :, :3] # getting rgb channels instead of rgba
 
-        self.front_camera = img_reshaped
+        # resize image for less computation
+        resized_img = cv2.resize(img_reshaped, (320, 160), interpolation=cv2.INTER_AREA)
+
+        # self.front_camera = img_reshaped
+        self.front_camera = resized_img
 
         if self.DISPLAY_CAM:
             # create pygame surface from the raw data

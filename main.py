@@ -54,7 +54,7 @@ if __name__=='__main__':
         device=device,
         gamma=0.99,
         tau=0.001,
-        batch_size=8,
+        batch_size=32,
         buffer_size=10000
     )
 
@@ -153,6 +153,7 @@ if __name__=='__main__':
                         states.to(device), sensor_states.to(device), actions.to(device), rewards.to(device), 
                         next_states.to(device), next_sensor_states.to(device), 
                         dones.to(device), weights.to(device), indices.to(device)
+                    )
 
                 # move to next state
                 state = next_state
@@ -173,8 +174,8 @@ if __name__=='__main__':
 
         
             print(f"Total Reward: {total_reward}, Steps: {steps}, Collision?: {collision_occurred}, Episode Length: {episode_length_time}s, Total Lane Deviation: {total_lane_deviation}m")
-            print("CUDA Memory Usage Summary:")
-            print(torch.cuda.memory_summary())
+            # print("CUDA Memory Usage Summary:")
+            # print(torch.cuda.memory_summary())
             print("---------------------------------------------------------------------------------------------------")
 
             # if episode % 5 == 0:
