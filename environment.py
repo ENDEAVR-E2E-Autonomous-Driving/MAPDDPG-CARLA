@@ -233,7 +233,7 @@ class environment:
         stuck_threshold = 5  # number of consecutive low-speed steps to consider stuck
 
         # Check for low velocity indicating possible stuck condition
-        if speed < 0.001:  # Threshold speed to determine if stuck
+        if speed < 0.0001:  # Threshold speed to determine if stuck
             self.stuck_steps += 1
         else:
             self.stuck_steps = 0  # Reset if speed is above the threshold
