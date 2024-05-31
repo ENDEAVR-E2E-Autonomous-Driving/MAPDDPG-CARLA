@@ -75,7 +75,7 @@ if __name__=='__main__':
 
     # total steps: used for learning every N steps across all episodes
     total_steps = 0
-    learn_every_n_steps = 50
+    learn_every_n_steps = 100
 
     print("All components are initialized.")
     print("Starting training loop...")
