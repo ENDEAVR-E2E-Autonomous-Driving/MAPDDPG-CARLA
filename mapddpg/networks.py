@@ -141,7 +141,7 @@ class Critic(nn.Module):
         self.conv5 = nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, stride=2)
 
         # Fully connected layers
-        self.flatten_size = 128*8*18 # last 3 dimensions of pooling layer multiplied together (flattening)
+        self.flatten_size = 128*4*11 # last 3 dimensions of pooling layer multiplied together (flattening)
         self.fc1 = nn.Linear(self.flatten_size, 512)
         self.fc2 = nn.Linear(512, 416) # last FC layer is 416 to accomodate concatenation with other representations
 
@@ -216,7 +216,7 @@ class Actor(nn.Module):
         self.cbam = CBAM(in_channels=128)
 
         # GRU layer
-        self.gru = nn.GRU(input_size=128 * 8 * 18, hidden_size=hidden_size, num_layers=num_gru_layers, batch_first=True)
+        self.gru = nn.GRU(input_size=128 * 4 * 11, hidden_size=hidden_size, num_layers=num_gru_layers, batch_first=True)
 
         # fully connected layers
         self.fc1 = nn.Linear(hidden_size, 512)
@@ -247,11 +247,11 @@ class Actor(nn.Module):
         print(x.size())
 
         # apply CBAM
-        x = x.view(batch_size, seq_len, 128, 8, 18)
+        x = x.view(batch_size, seq_len, 128, 4, 11)
         x = self.cbam(x)
 
         # reshape for GRU: (batch_size, seq_len, input_size)
-        x = x.reshape(batch_size, seq_len, 128*8*18)
+        x = x.reshape(batch_size, seq_len, 128*4*11)
 
         # pass through GRU
         gru_out, _ = self.gru(x)
