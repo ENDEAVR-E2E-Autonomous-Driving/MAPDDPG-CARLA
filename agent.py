@@ -135,8 +135,8 @@ class VehicleAgent:
             dones_float = dones.to(torch.float32).to(self.device)  # convert boolean to float
             expected_Q_values = rewards + (self.gamma * target_Q_values * (1 - dones_float)).detach() # Ensure no gradient computation
 
-        # compute current Q-values from the critic network
-        current_Q_values = self.critic(critic_states, vehicle_state, actions).squeeze()
+            # compute current Q-values from the critic network
+            current_Q_values = self.critic(critic_states, vehicle_state, actions).squeeze()
 
         # critic Loss: mean Squared Error between current Q-values and expected Q-values
         # multiply by importance sampling weights to offset bias from priority sampling
@@ -152,9 +152,9 @@ class VehicleAgent:
         # negative sign because we want to maximize the critic's output (policy gradient ascent)
         with torch.no_grad():
             throttle, steer, brake = self.actor(next_states, next_vehicle_state)
-        current_actions = torch.cat((throttle.unsqueeze(1), steer.unsqueeze(1), brake.unsqueeze(1)), dim=1).to(self.device)
-        # current_actions = torch.tensor(current_actions, dtype=torch.float32, device=self.device)
-        actor_loss = -self.critic(critic_states, vehicle_state, current_actions).mean()
+            current_actions = torch.cat((throttle.unsqueeze(1), steer.unsqueeze(1), brake.unsqueeze(1)), dim=1).to(self.device)
+            # current_actions = torch.tensor(current_actions, dtype=torch.float32, device=self.device)
+            actor_loss = -self.critic(critic_states, vehicle_state, current_actions).mean()
         actor_loss.backward()
         self.actor_optimizer.step()
 
