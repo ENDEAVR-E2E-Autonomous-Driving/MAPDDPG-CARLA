@@ -32,4 +32,5 @@ python main.py
 
 ---
 ## Training the Model on the Cloud via Lambda Labs
-1. 
+1. Request access to the Lambda Labs team through the *requests* channel in Discord.
+2. Launch an instance with the following instance type and filesystem:
