@@ -7,7 +7,7 @@
 
 1. Install CARLA following [this guide.](https://carla.readthedocs.io/en/latest/start_quickstart/#b-package-installation)
 2. Create and activate a virtual environment running Python 3.7 (latest version compatible with the CARLA python library).
-4. Install the CARLA python library using the **.whkl** file following the guide from step 1.
+4. Install the CARLA python library using the **.whl** file following the guide from step 1.
 5. Install the PyTorch library compatible with Python 3.7 using the command below that aligns with your GPU.
 
 **NVIDIA GPU (CUDA 11.6)**
