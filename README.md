@@ -23,3 +23,13 @@ pip install torch==1.13.0+rocm5.2 torchvision==0.14.0+rocm5.2 torchaudio==0.13.0
 ```
 pip install -r requirements.txt
 ```
+
+7. Run CARLA and wait until it is fully loaded (you can also run CARLA off-screen to save compute resources for training).
+8. Run the training iterations:
+```
+python main.py
+```
+
+---
+## Training the Model on the Cloud via Lambda Labs
+1. 
