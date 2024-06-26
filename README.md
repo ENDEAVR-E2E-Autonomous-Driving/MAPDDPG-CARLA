@@ -32,5 +32,5 @@ python main.py
 
 ---
 ## Training the Model on the Cloud
-1. Launch a VM instance on either [Lambda Labs](https://lambdalabs.com/service/gpu-cloud#pricing) or [Vast ai](https://vast.ai/?utm_source=googleads&utm_id=circleclick.com&gad_source=1&gclid=CjwKCAjw1emzBhB8EiwAHwZZxaH8av5HqdDSY_byXvA0UIg940bpkIkXW6ryxGg4NBf7d__-DuAzxxoChEAQAvD_BwE) (the instance should have a GPU with VRAM of at least 20 GB).
+1. Launch a VM instance on either [Lambda Labs](https://lambdalabs.com/service/gpu-cloud#pricing) or [Vast ai](https://vast.ai/?utm_source=googleads&utm_id=circleclick.com&gad_source=1&gclid=CjwKCAjw1emzBhB8EiwAHwZZxaH8av5HqdDSY_byXvA0UIg940bpkIkXW6ryxGg4NBf7d__-DuAzxxoChEAQAvD_BwE) (the instance should have a GPU with VRAM of at least 20 GB and an SSD/HD with at least 110 GB of storage).
 2. 
