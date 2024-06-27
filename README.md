@@ -32,5 +32,17 @@ python main.py
 
 ---
 ## Training the Model on the Cloud
-1. Launch a VM instance on either [Lambda Labs](https://lambdalabs.com/service/gpu-cloud#pricing) or [Vast ai](https://vast.ai/?utm_source=googleads&utm_id=circleclick.com&gad_source=1&gclid=CjwKCAjw1emzBhB8EiwAHwZZxaH8av5HqdDSY_byXvA0UIg940bpkIkXW6ryxGg4NBf7d__-DuAzxxoChEAQAvD_BwE) (the instance should have a GPU with VRAM of at least 20 GB and an SSD/HD with at least 110 GB of storage).
-2. 
+1. Launch a VM instance on either [Lambda Labs](https://lambdalabs.com/service/gpu-cloud#pricing) or [Vast ai](https://vast.ai/?utm_source=googleads&utm_id=circleclick.com&gad_source=1&gclid=CjwKCAjw1emzBhB8EiwAHwZZxaH8av5HqdDSY_byXvA0UIg940bpkIkXW6ryxGg4NBf7d__-DuAzxxoChEAQAvD_BwE)
+  - The instance should have a GPU with VRAM of at least 20 GB and an SSD/HD with at least 110 GB of storage.
+  - The instance should have the Ubuntu operating system (version 20.04 or newer).
+  - Note that you will need to create a private/public SSH key pair for connecting from your local terminal.
+    - If you create the key pair from your local computer, you will need to change the permissions on your stored private key.
+2. Clone this repository in your instance.
+3. Make the shell script executable:
+```
+chmod +x path\to\this\project\MAPDDPG-CARLA\install_dependencies.sh
+```
+4. Run the shell script to install all necessary dependencies:
+```
+./path/to/shell/script/install_dependencies.sh
+```
