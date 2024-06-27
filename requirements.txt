@@ -2,6 +2,10 @@ carla==0.9.15
 numpy==1.18.4
 opencv_python==4.9.0.80
 pygame==2.5.2
-# torch==1.13.1+cu116
+torch==1.13.1+cu116
 torchrl==0.1.1
-# torchvision==0.14.1+cu116
+torchvision==0.14.1+cu116
+
+# IF USING AMD GPU
+# torch==1.13.0+rocm5.2
+# torchvision==0.14.0+rocm5.2
