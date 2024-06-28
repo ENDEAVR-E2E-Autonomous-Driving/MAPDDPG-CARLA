@@ -1,6 +1,6 @@
 # Setup and Training with CARLA
 
-**NOTE:** Training this model with CARLA requires above average computational resources (around 20 GB of video ram) due to the complexity of the neural networks. If you have a sufficient computer (AMD or NVIDIA GPU with at least 20 GB of VRAM), follow the first instruction set, otherwise follow the second instruction set.
+**NOTE:** Training this model with CARLA requires above average computational resources (around 20 GB of video ram) due to the complexity of the model. If you have a sufficient computer (AMD or NVIDIA GPU with at least 20 GB of VRAM), follow the first instruction set, otherwise follow the second instruction set.
 
 ---
 ## Training the Model on Your Local Computer
