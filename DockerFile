@@ -4,9 +4,9 @@ FROM nvidia/cuda:11.6.1-base-ubuntu20.04
 # install system dependencies
 RUN apt-get update && apt-get install -y \
     wget \
-    git \
     python3.7 \
     python3-pip \
+    git \
     bzip2 \
     libgl1-mesa-glx \
     libxrender1 \
@@ -47,6 +47,7 @@ WORKDIR /opt
 RUN apt-get -y install libomp5
 RUN wget https://carla-releases.s3.us-east-005.backblazeb2.com/Linux/CARLA_0.9.15.tar.gz
 RUN tar -xzvf CARLA_0.9.15.tar.gz -C /opt/carla-simulator/
+RUN pip install /carla-simulator/PythonAPI/carla/dist/carla-0.9.15-py3.7-linux-x86_64.whl
 
 # set environment variables for CARLA
 ENV CARLA_ROOT /opt/carla-simulator
