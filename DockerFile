@@ -1,1 +1,52 @@
-# use
+# use cuda 11.6 as the base image
+FROM nvidia/cuda:11.6.0-base-ubuntu20.04
+
+# install system dependencies
+RUN apt-get update && apt-get install -y \
+    wget \
+    bzip2 \
+    libgl1-mesa-glx \
+    libxrender1 \
+    libxext6 \
+    libsm6 \
+    && rm -rf /var/lib/apt/lists/*
+
+# install anaconda by executing the installed shell script and installing into a directory
+RUN wget https://repo.anaconda.com/archive/Anaconda3-2024.06-1-Linux-x86_64.sh \
+    && bash Anaconda3-2024.06-1-Linux-x86_64.sh -b -p /opt/anaconda3 \  
+    && rm Anaconda3-2024.06-1-Linux-x86_64.sh
+
+# set environment variables for anaconda
+ENV PATH /opt/anaconda3/bin:$PATH
+
+# create and activate conda environment
+RUN conda create -y -n carla_env python=3.7 \
+    && echo "source activate carla_env" > ~/.bashrc
+SHELL ["/bin/bash", "-c", "source ~/.bashrc"]
+
+# clone the MAPDDPG repository
+WORKDIR /opt
+RUN git clone https://github.com/ENDEAVR-E2E-Autonomous-Driving/MAPDDPG-CARLA
+
+# cd the working directory
+WORKDIR /opt/MAPDDPG-CARLA
+
+# install python dependencies
+RUN /opt/anaconda3/bin/conda run -n carla_env install torch==1.13.1+cu116 torchvision==0.14.1+cu116 torchaudio==0.13.1 --extra-index-url https://download.pytorch.org/whl/cu116
+RUN /opt/anaconda3/bin/conda run -n carla_env pip install -r requirements.txt
+
+# download and install carla
+WORKDIR /opt
+RUN apt-get -y install libomp5
+RUN wget https://carla-releases.s3.us-east-005.backblazeb2.com/Linux/CARLA_0.9.15.tar.gz
+RUN tar -xzvf CARLA_0.9.15.tar.gz -C /opt/carla-simulator/
+
+# set environment variables for CARLA
+ENV CARLA_ROOT /opt/carla-simulator
+ENV PATH $CARLA_ROOT/bin:$PATH 
+
+# change to MAPDDPG directory
+WORKDIR /opt/MAPDDPG-CARLA
+
+# command to run carla in off-screen mode and start the training script
+CMD ["bash", "-c", "source activate carla_env && $CARLA_ROOT/CarlaUE4.sh -opengl -RenderOffScreen & python main.py"]
