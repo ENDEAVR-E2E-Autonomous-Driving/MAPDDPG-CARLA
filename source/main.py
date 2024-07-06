@@ -68,7 +68,7 @@ if __name__=='__main__':
     collisions_list = []
     lane_deviations_list = []
     episode_lengths_list = []
-    episodes_list = list(range(num_episodes))
+    episodes_list = []
 
     # stores current sequences
     current_sequence = []
@@ -171,6 +171,7 @@ if __name__=='__main__':
             collisions_list.append(collision_occurred)
             lane_deviations_list.append(total_lane_deviation)
             episode_lengths_list.append(episode_length_time)
+            episodes_list.append(episode)
 
         
             print(f"Total Reward: {total_reward}, Steps: {steps}, Collision?: {collision_occurred}, Episode Length: {episode_length_time}s, Total Lane Deviation: {total_lane_deviation}m")

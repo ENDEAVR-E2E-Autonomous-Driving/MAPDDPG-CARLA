@@ -38,7 +38,7 @@ WORKDIR /opt
 RUN git clone https://github.com/ENDEAVR-E2E-Autonomous-Driving/MAPDDPG-CARLA
 
 # cd the working directory
-WORKDIR /opt/MAPDDPG-CARLA
+# WORKDIR /opt/MAPDDPG-CARLA
 
 # install python dependencies
 # RUN pip install torch==1.13.1+cu116 torchvision==0.14.1+cu116 torchaudio==0.13.1 --extra-index-url https://download.pytorch.org/whl/cu116
@@ -59,7 +59,7 @@ ENV CARLA_ROOT /opt/carla-simulator
 ENV PATH $CARLA_ROOT/bin:$PATH 
 
 # change to MAPDDPG directory
-WORKDIR /opt/MAPDDPG-CARLA
+# WORKDIR /opt/MAPDDPG-CARLA
 
 # command to run carla in off-screen mode and start the training script
 # CMD ["bash", "-c", "source activate carla_env && $CARLA_ROOT/CarlaUE4.sh -opengl -RenderOffScreen & python main.py"]
